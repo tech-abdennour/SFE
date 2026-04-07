@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
     $data = json_decode(file_get_contents('php://input'), true);
     
     if ($data && isset($_SESSION['logged_in'])) {
-        // Vérifier si c'est une suppression
+        // Vérifier si c'est une suppression définitive
         if (isset($data['action']) && $data['action'] === 'delete' && isset($data['delete_id'])) {
             foreach ($_SESSION['deleted_sauvegardes'] as $key => $item) {
                 if ($item['id'] === $data['delete_id']) {
@@ -785,7 +785,7 @@ exit();
         </div>
     </div>
     
-    <!-- Historique Tab -->
+    <!-- Historique Tab avec colonne Taux -->
     <div id="historique" class="tab-content">
         <div class="page-title">
             <h1>📜 Historique des Analyses</h1>
@@ -801,6 +801,7 @@ exit();
                             <tr>
                                 <th>Date</th>
                                 <th>Clients (init/act)</th>
+                                <th>Taux (%)</th>
                                 <th>CPU/RAM</th>
                                 <th>Pack</th>
                                 <th>Charge prédite</th>
@@ -818,6 +819,9 @@ exit();
                                         $clients_act = isset($pred['clients_actuels']) ? $pred['clients_actuels'] : 'N/A';
                                         echo htmlspecialchars($clients_init) . ' → ' . htmlspecialchars($clients_act);
                                         ?>
+                                    </td>
+                                    <td>
+                                        <strong><?php echo isset($pred['growth_rate']) ? htmlspecialchars($pred['growth_rate']) : 'N/A'; ?>%</strong>
                                     </td>
                                     <td>
                                         <?php 
@@ -856,7 +860,7 @@ exit();
         </div>
     </div>
     
-    <!-- Corbeille Tab -->
+    <!-- Corbeille Tab avec colonne Taux -->
     <div id="supprimee" class="tab-content">
         <div class="page-title">
             <h1>🗑️ Sauvegardes Supprimées</h1>
@@ -872,6 +876,7 @@ exit();
                             <tr>
                                 <th>Date</th>
                                 <th>Clients (init/act)</th>
+                                <th>Taux (%)</th>
                                 <th>CPU/RAM</th>
                                 <th>Pack</th>
                                 <th>Charge prédite</th>
@@ -889,6 +894,9 @@ exit();
                                         $clients_act = isset($del['clients_actuels']) ? $del['clients_actuels'] : 'N/A';
                                         echo htmlspecialchars($clients_init) . ' → ' . htmlspecialchars($clients_act);
                                         ?>
+                                    </td>
+                                    <td>
+                                        <strong><?php echo isset($del['growth_rate']) ? htmlspecialchars($del['growth_rate']) : 'N/A'; ?>%</strong>
                                     </td>
                                     <td>
                                         <?php 
@@ -1108,7 +1116,6 @@ async function saveCurrentAnalysis() {
                 saveBtn.textContent = '💾 Sauvegarder cette analyse';
                 saveBtn.disabled = false;
             }, 2000);
-            // Recharger la page pour mettre à jour l'historique mais rester sur l'onglet sauvegarde
             setTimeout(() => {
                 window.location.href = window.location.pathname + '?tab=sauvegarde';
             }, 1500);
@@ -1146,11 +1153,9 @@ async function archiverAnalyse(id) {
         
         if (result.success) {
             showToast('📦 Analyse déplacée vers la corbeille');
-            // Supprimer la ligne du DOM dans l'historique
             const row = document.getElementById(`row-${id}`);
             if (row) row.remove();
             
-            // Vérifier s'il reste des lignes dans l'historique
             const tbody = document.getElementById('historique-tbody');
             if (tbody && tbody.children.length === 0) {
                 document.getElementById('historique-container').innerHTML = '<p style="text-align: center; color: #8a9bb0; padding: 40px;">📭 Aucune analyse enregistrée. Utilisez l\'onglet Sauvegarde pour enregistrer vos analyses.</p>';
@@ -1260,21 +1265,17 @@ function runExpertAnalysis() {
         return;
     }
     
-    // Vérifier que le taux de croissance est rempli (soit via le champ direct, soit via le calcul)
+    // Vérifier que le taux de croissance est rempli
     let growth = null;
-    
-    // Essayer d'abord de récupérer la valeur calculée depuis les clients
     const clients_initiaux = document.getElementById('clients_initiaux').value;
     const clients_actuels = document.getElementById('clients_actuels').value;
     
     if (clients_initiaux !== '' && clients_actuels !== '' && parseFloat(clients_initiaux) !== 0) {
-        // Calculer à partir des clients
         const init = parseFloat(clients_initiaux);
         const act = parseFloat(clients_actuels);
         growth = ((act - init) / init) * 100;
         document.getElementById('growth').value = Math.round(growth * 100) / 100;
     } else if (growthInput.value !== '' && growthInput.value !== null) {
-        // Utiliser la valeur saisie directement
         growth = parseFloat(growthInput.value);
     } else {
         showToast('❌ Veuillez saisir un taux de croissance OU renseigner les clients (initiaux et actuels) !', true);
@@ -1283,7 +1284,7 @@ function runExpertAnalysis() {
         return;
     }
     
-    // Vérifier la limite du pack (uniquement si les clients actuels sont renseignés)
+    // Vérifier la limite du pack
     if (clients_actuels !== '') {
         if (!checkClientLimit()) {
             return;
@@ -1392,12 +1393,6 @@ function runExpertAnalysis() {
     const statusArea = document.getElementById('status-area');
     const reportText = document.getElementById('report-text');
     
-    const packNames = {
-        'small': 'SMALL (max 10k clients)',
-        'medium': 'MEDIUM (max 50k clients)',
-        'performance': 'PERFORMANCE (illimité)'
-    };
-    
     let status = '';
     let recommendation = '';
     
@@ -1452,15 +1447,12 @@ function runExpertAnalysis() {
     updateLastAnalysisDisplay(lastAnalysis);
     analysisGenerated = true;
     
-    // Afficher le message de prédiction terminée
     showPredictionMessage();
-    
-    // Mettre à jour l'affichage dans l'onglet résultats
     document.getElementById('no-data-message').style.display = 'none';
     document.getElementById('results-content').style.display = 'block';
 }
 
-// Initialisation - gestion du paramètre tab dans l'URL
+// Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
