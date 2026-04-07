@@ -13,7 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_submit'])) {
     if ($username === ADMIN_USERNAME && $password === ADMIN_PASSWORD) {
         $_SESSION['logged_in'] = true;
         $_SESSION['login_time'] = time();
-        // Redirection pour éviter la resoumission du formulaire
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
     } else {
@@ -27,7 +26,6 @@ if (isset($_GET['logout'])) {
     exit();
 }
 
-// Vérification de session expirée (optionnel : 8 heures)
 if (isset($_SESSION['logged_in']) && isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 28800)) {
     session_destroy();
     header("Location: " . $_SERVER['PHP_SELF']);
@@ -232,7 +230,6 @@ exit();
             overflow-x: hidden;
         }
 
-        /* Sidebar */
         .sidebar {
             position: fixed;
             left: 0;
@@ -311,7 +308,6 @@ exit();
             color: #ff7a5c;
         }
 
-        /* Main Content */
         .main-content {
             margin-left: 280px;
             padding: 40px 48px;
@@ -338,7 +334,6 @@ exit();
             }
         }
 
-        /* Cards */
         .card {
             background: white;
             border-radius: 20px;
@@ -419,7 +414,6 @@ exit();
             box-shadow: 0 8px 20px rgba(24, 144, 255, 0.3);
         }
 
-        /* Chart Wrapper */
         .chart-wrapper {
             background: #fafbfc;
             padding: 20px;
@@ -429,11 +423,10 @@ exit();
         }
 
         canvas {
-            max-height: 400px;
+            max-height: 450px;
             width: 100%;
         }
 
-        /* Status Badges */
         .status-badge {
             display: inline-flex;
             align-items: center;
@@ -462,7 +455,6 @@ exit();
             border-left: 4px solid #1890ff;
         }
 
-        /* Page Title */
         .page-title {
             margin-bottom: 32px;
         }
@@ -478,6 +470,24 @@ exit();
             color: #6b7a8a;
             font-size: 14px;
         }
+
+        .threshold-legend {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            font-size: 12px;
+            flex-wrap: wrap;
+        }
+
+        .threshold-line {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
     </style>
 </head>
 <body>
@@ -489,10 +499,10 @@ exit();
     </div>
     
     <div class="menu-item active-menu" onclick="showTab('dashboard')">
-        <span>📊</span> Dashboard Analyse
+        <span>📊</span> la saisie des paramètre
     </div>
     <div class="menu-item" onclick="showTab('resultats')">
-        <span>🔮</span> Résultats Prédictifs
+        <span>🔮</span> Résultats Prédictifs et Dashboard
     </div>
     
     <div style="margin: 32px 20px 16px; font-size: 11px; color: #5a6e8a; text-transform: uppercase; letter-spacing: 1px;">
@@ -567,13 +577,28 @@ exit();
             <div class="chart-wrapper">
                 <canvas id="seabornChart"></canvas>
             </div>
+            <!-- LÉGENDE AVEC SEUIL CRITIQUE EN POINTILLÉS -->
+            <div class="threshold-legend">
+                <div class="threshold-line">
+                    <div style="width: 30px; height: 3px; background: none; border-bottom: 3px dashed #ff4d4f;"></div>
+                    <span><strong>Seuil critique (80%)</strong> - Zone d'alerte</span>
+                </div>
+                <div class="threshold-line">
+                    <div style="width: 30px; height: 3px; background: #C44E52; border-radius: 2px;"></div>
+                    <span><strong>Ligne de régression</strong> - Prédiction linéaire</span>
+                </div>
+                <div class="threshold-line">
+                    <div style="width: 12px; height: 12px; background: #4C72B0; border-radius: 50%;"></div>
+                    <span><strong>Points observés</strong> - Données simulées</span>
+                </div>
+            </div>
         </div>
         
         <div class="card expert-report" id="expert-report" style="display: none;">
             <h3>🛡️ Recommandation Expert IT</h3>
             <p id="report-text" style="line-height: 1.6; color: #2c3e50;"></p>
             <p style="font-size: 11px; color: #8a9bb0; margin-top: 16px; padding-top: 12px; border-top: 1px solid #eef2f6;">
-                📐 Modèle : Régression Linéaire OLS (Ordinary Least Squares)
+                📐 Modèle : Régression Linéaire OLS | Seuil d'alerte : 80% | Axes : 0-100%
             </p>
         </div>
     </div>
@@ -583,20 +608,16 @@ exit();
 let chartInstance = null;
 
 function showTab(tabId) {
-    // Cacher tous les contenus
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active-tab');
     });
     
-    // Désactiver tous les menus
     document.querySelectorAll('.menu-item').forEach(menu => {
         menu.classList.remove('active-menu');
     });
     
-    // Afficher l'onglet sélectionné
     document.getElementById(tabId).classList.add('active-tab');
     
-    // Activer le menu correspondant
     const menuMap = {
         'dashboard': 0,
         'resultats': 1
@@ -626,21 +647,27 @@ function runExpertAnalysis() {
         return;
     }
     
-    // Génération des données de régression
-    const scatterData = [];
-    const step = Math.max(1, Math.floor(growth / 15));
+    // Coefficient de régression (pente)
+    const slope = 0.85;
     
-    for (let i = 0; i <= growth + 5; i += step) {
-        const predictedLoad = cpu + (i * 0.85);
-        const randomVariation = (Math.random() - 0.5) * 6;
-        let yValue = Math.min(100, Math.max(0, predictedLoad + randomVariation));
+    // Génération des points de données avec dispersion aléatoire autour de la droite
+    const scatterData = [];
+    for (let i = 0; i <= 100; i += 5) {
+        // Valeur théorique sur la droite de régression
+        const theoreticalValue = cpu + (i * slope * (growth / 100));
+        // Ajout d'une dispersion aléatoire pour simuler des observations réelles
+        const randomVariation = (Math.random() - 0.5) * 8;
+        let yValue = Math.min(100, Math.max(0, theoreticalValue + randomVariation));
         scatterData.push({ x: i, y: yValue });
     }
     
-    // Ligne de tendance
-    const trendLine = [
-        { x: 0, y: cpu },
-        { x: growth + 10, y: Math.min(100, cpu + ((growth + 10) * 0.85)) }
+    // LIGNE DE RÉGRESSION PARFAITEMENT DROITE (seulement 2 points)
+    const yAt0 = cpu;
+    const yAt100 = Math.min(100, Math.max(0, cpu + (100 * slope * (growth / 100))));
+    
+    const regressionLine = [
+        { x: 0, y: yAt0 },
+        { x: 100, y: yAt100 }
     ];
     
     // Création du graphique
@@ -657,22 +684,36 @@ function runExpertAnalysis() {
                 {
                     label: 'Points de charge observés',
                     data: scatterData,
-                    backgroundColor: 'rgba(76, 114, 176, 0.6)',
+                    backgroundColor: 'rgba(76, 114, 176, 0.7)',
                     borderColor: '#4C72B0',
-                    pointRadius: 6,
+                    pointRadius: 5,
                     pointHoverRadius: 8,
                     pointBorderWidth: 2,
                     pointBorderColor: '#ffffff'
                 },
                 {
-                    label: 'Ligne de Régression (Prédiction)',
-                    data: trendLine,
+                    label: '📈 Ligne de Régression',
+                    data: regressionLine,
                     type: 'line',
                     borderColor: '#C44E52',
                     borderWidth: 3,
                     fill: false,
                     pointRadius: 0,
-                    tension: 0
+                    tension: 0,
+                    borderDash: []
+                },
+                {
+                    label: '⚠️ Seuil Critique (80%)',
+                    data: [
+                        { x: 0, y: 80 },
+                        { x: 100, y: 80 }
+                    ],
+                    type: 'line',
+                    borderColor: '#ff4d4f',
+                    borderWidth: 2.5,
+                    borderDash: [8, 6],
+                    fill: false,
+                    pointRadius: 0
                 }
             ]
         },
@@ -683,15 +724,18 @@ function runExpertAnalysis() {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
+                            if (context.dataset.label === '⚠️ Seuil Critique (80%)') {
+                                return 'Seuil d\'alerte : 80% de saturation';
+                            }
+                            if (context.dataset.label === '📈 Ligne de Régression') {
+                                return `Prédiction à ${context.parsed.x}% de croissance : ${Math.round(context.parsed.y)}% de charge`;
+                            }
                             return `Croissance: ${context.parsed.x}% | Charge: ${Math.round(context.parsed.y)}%`;
                         }
                     }
                 },
                 legend: {
-                    position: 'top',
-                    labels: {
-                        font: { size: 12, family: 'Inter' }
-                    }
+                    display: false
                 }
             },
             scales: {
@@ -701,9 +745,18 @@ function runExpertAnalysis() {
                         text: 'Croissance du Trafic (%)',
                         font: { size: 13, weight: 'bold' }
                     },
-                    grid: { color: '#eef2f6' },
+                    grid: { 
+                        color: '#eef2f6',
+                        drawBorder: true
+                    },
                     min: 0,
-                    max: growth + 10
+                    max: 100,
+                    ticks: {
+                        stepSize: 10,
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
                 },
                 y: {
                     title: {
@@ -711,18 +764,26 @@ function runExpertAnalysis() {
                         text: 'Utilisation des Ressources (%)',
                         font: { size: 13, weight: 'bold' }
                     },
-                    grid: { color: '#eef2f6' },
+                    grid: { 
+                        color: '#eef2f6',
+                        drawBorder: true
+                    },
                     min: 0,
                     max: 100,
-                    ticks: { stepSize: 20 }
+                    ticks: {
+                        stepSize: 10,
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
                 }
             }
         }
     });
     
     // Analyse et recommandation
-    const predictedLoad = cpu + (growth * 0.85);
-    const finalLoad = Math.min(100, Math.round(predictedLoad));
+    const predictedLoadAtGrowth = cpu + (growth * slope);
+    const finalLoad = Math.min(100, Math.round(predictedLoadAtGrowth));
     const statusArea = document.getElementById('status-area');
     const expertReport = document.getElementById('expert-report');
     const reportText = document.getElementById('report-text');
@@ -735,15 +796,26 @@ function runExpertAnalysis() {
         'performance': 'PERFORMANCE (haute capacité)'
     };
     
-    if (finalLoad >= 85) {
+    // Calcul du point d'atteinte du seuil critique
+    let criticalPoint = null;
+    if (predictedLoadAtGrowth >= 80) {
+        criticalPoint = ((80 - cpu) / (slope * (growth / 100))).toFixed(1);
+        if (criticalPoint < 0) criticalPoint = 0;
+        if (criticalPoint > 100) criticalPoint = 100;
+    }
+    
+    if (finalLoad >= 80) {
         statusArea.innerHTML = `
             <div class="status-badge critical">
-                ⚠️ MIGRATION CRITIQUE REQUISE
+                ⚠️ DÉPASSEMENT DU SEUIL CRITIQUE (${finalLoad}% ≥ 80%)
             </div>
         `;
         reportText.innerHTML = `
             <strong>Analyse prédictive :</strong> Avec une croissance projetée de <strong>${growth}%</strong>, 
             vos ressources atteindront <strong style="color:#cf1322;">${finalLoad}%</strong> de saturation.<br><br>
+            <strong>⚠️ SEUIL CRITIQUE DÉPASSÉ :</strong> Le modèle de régression linéaire prédit que la charge dépassera le seuil d'alerte de <strong>80%</strong>.
+            ${criticalPoint ? `<br><br>📌 <strong>Point de basculement :</strong> Le seuil critique sera atteint à <strong>${criticalPoint}%</strong> de croissance.` : ''}
+            <br><br>
             Le pack <strong>${packNames[type]}</strong> est insuffisant pour absorber cette charge dans les prochains mois.
             <br><br>
             <strong>Recommandation immédiate :</strong> Migration vers une infrastructure Cloud VPS avec auto-scaling pour garantir la 
@@ -752,12 +824,15 @@ function runExpertAnalysis() {
     } else if (finalLoad >= 70) {
         statusArea.innerHTML = `
             <div class="status-badge" style="background:#fff7e6; color:#d46b00; border-color:#ffe58f;">
-                ⚡ SURVEILLANCE RENFORCÉE RECOMMANDÉE
+                ⚡ APPROCHE DU SEUIL CRITIQUE (${finalLoad}% / 80%)
             </div>
         `;
         reportText.innerHTML = `
             <strong>Analyse prédictive :</strong> Avec une croissance de <strong>${growth}%</strong>, 
             vos ressources atteindront <strong style="color:#d46b00;">${finalLoad}%</strong> dans les prochains mois.<br><br>
+            <strong>⚠️ Attention :</strong> Vous approchez du seuil critique de <strong>80%</strong> de saturation.
+            Marge restante : <strong>${Math.round(80 - finalLoad)}%</strong> avant d'atteindre le seuil.
+            <br><br>
             Le pack <strong>${packNames[type]}</strong> peut encore supporter cette charge, mais une marge de sécurité réduite est observée.
             <br><br>
             <strong>Recommandation :</strong> Planifiez une optimisation des ressources et surveillez attentivement l'évolution des métriques.
@@ -765,13 +840,14 @@ function runExpertAnalysis() {
     } else {
         statusArea.innerHTML = `
             <div class="status-badge optimal">
-                ✅ INFRASTRUCTURE OPTIMISÉE
+                ✅ INFRASTRUCTURE OPTIMISÉE (${finalLoad}% < 80%)
             </div>
         `;
         reportText.innerHTML = `
-            <strong>Analyse prédictive :</strong> Le modèle de régression confirme que votre infrastructure actuelle 
+            <strong>Analyse prédictive :</strong> Le modèle de régression linéaire confirme que votre infrastructure actuelle 
             peut absorber la croissance projetée de <strong>${growth}%</strong>.<br><br>
-            Marge de sécurité estimée : <strong style="color:#389e0d;">${Math.round(100 - finalLoad)}%</strong> de ressources disponibles.<br><br>
+            <strong>✅ Seuil critique non atteint :</strong> La charge prévue (${finalLoad}%) reste en dessous du seuil d'alerte de <strong>80%</strong>.<br><br>
+            Marge de sécurité estimée : <strong style="color:#389e0d;">${Math.round(80 - finalLoad)}%</strong> avant d'atteindre le seuil critique.<br><br>
             <strong>Recommandation :</strong> Aucun changement d'infrastructure n'est nécessaire. Continuez à surveiller les métriques 
             pour anticiper les besoins futurs.
         `;
@@ -785,7 +861,6 @@ function runExpertAnalysis() {
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', function() {
-    // S'assurer que le menu est correctement initialisé
     if (!window.location.hash) {
         showTab('dashboard');
     }
