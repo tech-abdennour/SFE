@@ -1,232 +1,795 @@
 <?php
 session_start();
 
-// --- 1. MOTEUR D'AUTHENTIFICATION ---
+// Configuration de sécurité
+define('ADMIN_USERNAME', 'admin');
+define('ADMIN_PASSWORD', 'vala2026');
+
+// --- GESTION DE L'AUTHENTIFICATION ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_submit'])) {
-    // Identifiants experts pour la soutenance
-    if ($_POST['username'] === 'admin' && $_POST['password'] === 'vala2026') {
+    $username = trim($_POST['username'] ?? '');
+    $password = $_POST['password'] ?? '';
+    
+    if ($username === ADMIN_USERNAME && $password === ADMIN_PASSWORD) {
         $_SESSION['logged_in'] = true;
-    } else { $error = "Accès refusé. Vérifiez vos privilèges AIOps."; }
+        $_SESSION['login_time'] = time();
+        // Redirection pour éviter la resoumission du formulaire
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
+    } else {
+        $error = "Accès refusé. Vérifiez vos identifiants.";
+    }
 }
 
-if (isset($_GET['logout'])) { session_destroy(); header("Location: index.php"); exit(); }
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit();
+}
 
+// Vérification de session expirée (optionnel : 8 heures)
+if (isset($_SESSION['logged_in']) && isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 28800)) {
+    session_destroy();
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit();
+}
+
+// --- PAGE DE LOGIN ---
 if (!isset($_SESSION['logged_in'])) {
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Vala Bleu - Expert Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vala Bleu - Authentification Expert</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background: #001529; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-card { background: #ffffff; padding: 40px; border-radius: 12px; width: 380px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border-top: 6px solid #1890ff; }
-        h2 { color: #001529; margin-bottom: 5px; }
-        p { color: #666; font-size: 14px; margin-bottom: 30px; }
-        input { width: 100%; padding: 14px; margin: 10px 0; border: 1px solid #d9d9d9; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        button { width: 100%; padding: 14px; background: #1890ff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px; transition: 0.3s; }
-        button:hover { background: #40a9ff; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #001529 0%, #002140 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .login-card {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 48px 40px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .login-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .logo {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #1890ff, #40a9ff);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            font-size: 32px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #001529;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #8c8c8c;
+            font-size: 14px;
+            margin-bottom: 32px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #595959;
+            margin-bottom: 8px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e8e8e8;
+            border-radius: 12px;
+            font-size: 15px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #1890ff;
+            box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #1890ff, #40a9ff);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 12px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(24, 144, 255, 0.3);
+        }
+
+        .error-message {
+            background: #fff2f0;
+            border-left: 4px solid #ff4d4f;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: left;
+            font-size: 13px;
+            color: #ff4d4f;
+        }
+
+        .footer-text {
+            margin-top: 24px;
+            font-size: 12px;
+            color: #bfbfbf;
+        }
     </style>
 </head>
 <body>
-    <div class="login-card">
-        <h2>VALA BLEU</h2>
-        <p>Expert Predictive Systems v4.0</p>
-        <?php if(isset($error)) echo "<p style='color:#f5222d; font-weight:bold;'>$error</p>"; ?>
-        <form method="POST">
-            <input type="text" name="username" placeholder="Identifiant" required autofocus>
-            <input type="password" name="password" placeholder="Mot de passe" required>
-            <button type="submit" name="login_submit">Démarrer l'Analyse</button>
-        </form>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">
+                <span>⚡</span>
+            </div>
+            <h1>VALA BLEU</h1>
+            <div class="subtitle">Expert Predictive Systems v4.0</div>
+            
+            <?php if (isset($error)): ?>
+                <div class="error-message">
+                    <strong>⚠️ Erreur</strong><br>
+                    <?php echo htmlspecialchars($error); ?>
+                </div>
+            <?php endif; ?>
+            
+            <form method="POST">
+                <div class="input-group">
+                    <label>Identifiant</label>
+                    <input type="text" name="username" placeholder="admin" required autofocus>
+                </div>
+                <div class="input-group">
+                    <label>Mot de passe</label>
+                    <input type="password" name="password" placeholder="••••••••" required>
+                </div>
+                <button type="submit" name="login_submit">Accéder au Dashboard</button>
+            </form>
+        </div>
+        <div class="footer-text">
+            Système sécurisé - Accès réservé aux experts
+        </div>
     </div>
 </body>
 </html>
-<?php exit(); } ?>
+<?php 
+exit();
+} 
+?>
 
+<!-- DASHBOARD PRINCIPAL -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>SFE - Dashboard Expert Vala</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vala Bleu - Dashboard Expert AIOps</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #1890ff; --dark: #001529; --bg: #f0f2f5; --seaborn-blue: #4C72B0; --seaborn-red: #C44E52; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; display: flex; }
-        
-        /* BARRE LATÉRALE EXPERTE */
-        .sidebar { width: 280px; background: var(--dark); color: white; height: 100vh; padding: 30px; position: fixed; }
-        .sidebar h2 { color: var(--primary); font-size: 24px; letter-spacing: 1px; margin-bottom: 40px; }
-        .menu-item { padding: 15px; margin-bottom: 10px; border-radius: 8px; cursor: pointer; transition: 0.3s; display: flex; align-items: center; color: #a6adb4; font-weight: 500; }
-        .menu-item:hover { background: rgba(24, 144, 255, 0.1); color: white; }
-        .active-menu { background: var(--primary) !important; color: white !important; box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3); }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-        /* CONTENU PRINCIPAL */
-        .main { margin-left: 280px; padding: 40px; width: calc(100% - 280px); }
-        .tab-content { display: none; animation: fadeIn 0.5s; }
-        .active-tab { display: block; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f5f7fa;
+            overflow-x: hidden;
+        }
 
-        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 30px; border: 1px solid #e8e8e8; }
-        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
-        
-        label { font-weight: 600; color: #444; font-size: 14px; }
-        select, input { width: 100%; padding: 12px; border: 1px solid #d9d9d9; border-radius: 8px; margin-top: 8px; font-size: 15px; background: #fafafa; }
-        .btn-predict { background: var(--primary); color: white; border: none; padding: 18px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 30px; font-size: 16px; transition: 0.3s; }
-        .btn-predict:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(24, 144, 255, 0.4); }
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 280px;
+            height: 100vh;
+            background: linear-gradient(180deg, #001529 0%, #000c17 100%);
+            color: white;
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+        }
 
-        /* GRAPHIQUE SEABORN */
-        #chartWrapper { background: #EAEAF2; padding: 20px; border-radius: 12px; border: 1px solid #d1d1d1; }
-        .status-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 15px; }
-        .critical { background: #fff1f0; color: #f5222d; border: 1px solid #ffa39e; }
-        .optimal { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        .sidebar-header {
+            margin-bottom: 48px;
+            text-align: center;
+        }
+
+        .sidebar-header h2 {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #1890ff, #40a9ff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .sidebar-header p {
+            font-size: 11px;
+            color: #5a6e8a;
+            letter-spacing: 1px;
+        }
+
+        .menu-item {
+            padding: 14px 20px;
+            margin-bottom: 8px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            color: #a6b4c8;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .menu-item:hover {
+            background: rgba(24, 144, 255, 0.1);
+            color: white;
+            transform: translateX(4px);
+        }
+
+        .active-menu {
+            background: linear-gradient(135deg, #1890ff, #40a9ff);
+            color: white !important;
+            box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+        }
+
+        .logout-link {
+            margin-top: auto;
+            padding: 14px 20px;
+            color: #ff7a5c;
+            text-decoration: none;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 500;
+        }
+
+        .logout-link:hover {
+            background: rgba(255, 77, 79, 0.1);
+            color: #ff7a5c;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            padding: 40px 48px;
+            min-height: 100vh;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .active-tab {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 28px 32px;
+            margin-bottom: 28px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            border: 1px solid #eef2f6;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        .card h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a2c3e;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #4a5b6e;
+            margin-bottom: 8px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e8edf2;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s ease;
+            background: #fafbfc;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #1890ff;
+            background: white;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #1890ff, #40a9ff);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 16px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(24, 144, 255, 0.3);
+        }
+
+        /* Chart Wrapper */
+        .chart-wrapper {
+            background: #fafbfc;
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid #eef2f6;
+            margin-top: 20px;
+        }
+
+        canvas {
+            max-height: 400px;
+            width: 100%;
+        }
+
+        /* Status Badges */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+
+        .critical {
+            background: #fff1f0;
+            color: #cf1322;
+            border: 1px solid #ffccc7;
+        }
+
+        .optimal {
+            background: #f6ffed;
+            color: #389e0d;
+            border: 1px solid #b7eb8f;
+        }
+
+        .expert-report {
+            background: linear-gradient(135deg, #f0f7ff, #ffffff);
+            border-left: 4px solid #1890ff;
+        }
+
+        /* Page Title */
+        .page-title {
+            margin-bottom: 32px;
+        }
+
+        .page-title h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1a2c3e;
+            margin-bottom: 8px;
+        }
+
+        .page-title p {
+            color: #6b7a8a;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <h2>VALA BLEU</h2>
-    <div id="m-dash" class="menu-item active-menu" onclick="showTab('dashboard')">🏠 Dashboard Analysis</div>
-    <div id="m-res" class="menu-item" onclick="showTab('resultats')">📊 Résultats Prédictifs</div>
+    <div class="sidebar-header">
+        <h2>VALA BLEU</h2>
+        <p>EXPERT AIOps v4.0</p>
+    </div>
     
-    <div style="margin-top:50px; font-size:12px; color:#595959; padding-left:15px;">SERVICE MONITORÉ</div>
-    <div style="padding:15px; color:#fff; font-weight:bold;">WordPress Specialist Pack</div>
+    <div class="menu-item active-menu" onclick="showTab('dashboard')">
+        <span>📊</span> Dashboard Analyse
+    </div>
+    <div class="menu-item" onclick="showTab('resultats')">
+        <span>🔮</span> Résultats Prédictifs
+    </div>
     
-    <a href="?logout=1" style="color:#ff4d4f; text-decoration:none; display:block; margin-top:150px; padding:15px; font-weight:bold;">🚪 Déconnexion</a>
-</div>
-
-<div class="main">
-    
-    <div id="dashboard" class="tab-content active-tab">
-        <h1>Analyse de Croissance WordPress</h1>
-        <p style="color:#666;">Simulateur de Capacity Planning basé sur l'IA pour l'infrastructure Vala Bleu.</p>
-        
-        <div class="card">
-            <h3>1. Configuration de l'Hébergement</h3>
-            <div class="grid">
-                <div>
-                    <label>Pack WordPress Actuel :</label>
-                    <select id="wp_type">
-                        <option value="small">WordPress SMALL (Max 10k visits)</option>
-                        <option value="medium">WordPress MEDIUM (Max 50k visits)</option>
-                        <option value="performance" selected>WordPress PERFORMANCE (Unlimited)</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Taux de Croissance Mensuel (%) :</label>
-                    <input type="number" id="growth" value="25" min="1" max="200">
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h3>2. Métriques Systèmes Actuelles</h3>
-            <div class="grid">
-                <div><label>Charge CPU Actuelle (%) :</label><input type="number" id="cpu" value="40"></div>
-                <div><label>Consommation RAM (%) :</label><input type="number" id="ram" value="55"></div>
-            </div>
-            <button class="btn-predict" onclick="runExpertAnalysis()">GÉNÉRER LE RAPPORT DE RÉGRESSION</button>
+    <div style="margin: 32px 20px 16px; font-size: 11px; color: #5a6e8a; text-transform: uppercase; letter-spacing: 1px;">
+        Service Monitoré
+    </div>
+    <div style="padding: 0 20px; margin-bottom: 20px;">
+        <div style="background: rgba(24,144,255,0.1); padding: 12px; border-radius: 12px;">
+            <div style="font-weight: 600; margin-bottom: 4px;">WordPress</div>
+            <div style="font-size: 11px; color: #8a9bb0;">Performance Pack</div>
         </div>
     </div>
+    
+    <a href="?logout=1" class="logout-link">
+        <span>🚪</span> Déconnexion
+    </a>
+</div>
 
+<div class="main-content">
+    <!-- Dashboard Tab -->
+    <div id="dashboard" class="tab-content active-tab">
+        <div class="page-title">
+            <h1>Analyse de Croissance WordPress</h1>
+            <p>Simulateur de Capacity Planning basé sur l'IA pour l'infrastructure Vala Bleu</p>
+        </div>
+        
+        <div class="card">
+            <h3>⚙️ Configuration de l'Hébergement</h3>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Pack WordPress Actuel</label>
+                    <select id="wp_type">
+                        <option value="small">SMALL (Max 10k visites/mois)</option>
+                        <option value="medium">MEDIUM (Max 50k visites/mois)</option>
+                        <option value="performance" selected>PERFORMANCE (Trafic illimité)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Taux de Croissance Mensuel (%)</label>
+                    <input type="number" id="growth" value="25" min="1" max="200" step="1">
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>📈 Métriques Systèmes Actuelles</h3>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Charge CPU Actuelle (%)</label>
+                    <input type="number" id="cpu" value="40" min="0" max="100" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Consommation RAM (%)</label>
+                    <input type="number" id="ram" value="55" min="0" max="100" step="1">
+                </div>
+            </div>
+            <button class="btn-primary" onclick="runExpertAnalysis()">
+                🚀 GÉNÉRER LE RAPPORT DE RÉGRESSION
+            </button>
+        </div>
+    </div>
+    
+    <!-- Résultats Tab -->
     <div id="resultats" class="tab-content">
-        <h1>Analyse Statistique des Résultats</h1>
+        <div class="page-title">
+            <h1>Analyse Statistique des Résultats</h1>
+            <p>Modèle de prédiction basé sur la régression linéaire</p>
+        </div>
         
         <div class="card">
             <div id="status-area"></div>
-            <h3 id="result-title">Relation entre Croissance et Saturation</h3>
-            <div id="chartWrapper">
+            <h3>📐 Relation entre Croissance et Saturation</h3>
+            <div class="chart-wrapper">
                 <canvas id="seabornChart"></canvas>
             </div>
         </div>
-
-        <div class="card" id="expert-report" style="display:none;">
+        
+        <div class="card expert-report" id="expert-report" style="display: none;">
             <h3>🛡️ Recommandation Expert IT</h3>
-            <p id="report-text"></p>
-            <p style="font-size:12px; color:#888;">Modèle de prédiction : Régression Linéaire OLS (Ordinary Least Squares)</p>
+            <p id="report-text" style="line-height: 1.6; color: #2c3e50;"></p>
+            <p style="font-size: 11px; color: #8a9bb0; margin-top: 16px; padding-top: 12px; border-top: 1px solid #eef2f6;">
+                📐 Modèle : Régression Linéaire OLS (Ordinary Least Squares)
+            </p>
         </div>
     </div>
-
 </div>
 
 <script>
 let chartInstance = null;
 
 function showTab(tabId) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active-tab'));
-    document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active-menu'));
+    // Cacher tous les contenus
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active-tab');
+    });
+    
+    // Désactiver tous les menus
+    document.querySelectorAll('.menu-item').forEach(menu => {
+        menu.classList.remove('active-menu');
+    });
+    
+    // Afficher l'onglet sélectionné
     document.getElementById(tabId).classList.add('active-tab');
-    if(tabId === 'dashboard') document.getElementById('m-dash').classList.add('active-menu');
-    else document.getElementById('m-res').classList.add('active-menu');
+    
+    // Activer le menu correspondant
+    const menuMap = {
+        'dashboard': 0,
+        'resultats': 1
+    };
+    
+    const menus = document.querySelectorAll('.menu-item');
+    if (menus[menuMap[tabId]]) {
+        menus[menuMap[tabId]].classList.add('active-menu');
+    }
 }
 
 function runExpertAnalysis() {
-    const cpu = parseFloat(document.getElementById('cpu').value);
-    const ram = parseFloat(document.getElementById('ram').value);
-    const growth = parseFloat(document.getElementById('growth').value);
+    // Récupération des valeurs
+    const cpu = parseFloat(document.getElementById('cpu').value) || 0;
+    const ram = parseFloat(document.getElementById('ram').value) || 0;
+    const growth = parseFloat(document.getElementById('growth').value) || 0;
     const type = document.getElementById('wp_type').value;
-
-    // Simulation de données de Régression (Style Seaborn)
-    const ctx = document.getElementById('seabornChart').getContext('2d');
-    const scatterData = [];
-    // Génération de points de données réalistes
-    for(let i=0; i <= growth; i+=2) {
-        scatterData.push({x: i, y: cpu + (i * 0.9) + (Math.random() * 8 - 4)});
+    
+    // Validation
+    if (cpu < 0 || cpu > 100 || ram < 0 || ram > 100) {
+        alert('Veuillez entrer des valeurs valides (0-100) pour CPU et RAM');
+        return;
     }
+    
+    if (growth < 1 || growth > 200) {
+        alert('Le taux de croissance doit être compris entre 1% et 200%');
+        return;
+    }
+    
+    // Génération des données de régression
+    const scatterData = [];
+    const step = Math.max(1, Math.floor(growth / 15));
+    
+    for (let i = 0; i <= growth + 5; i += step) {
+        const predictedLoad = cpu + (i * 0.85);
+        const randomVariation = (Math.random() - 0.5) * 6;
+        let yValue = Math.min(100, Math.max(0, predictedLoad + randomVariation));
+        scatterData.push({ x: i, y: yValue });
+    }
+    
+    // Ligne de tendance
     const trendLine = [
-        {x: 0, y: cpu},
-        {x: growth + 15, y: cpu + ((growth + 15) * 0.9)}
+        { x: 0, y: cpu },
+        { x: growth + 10, y: Math.min(100, cpu + ((growth + 10) * 0.85)) }
     ];
-
-    if(chartInstance) chartInstance.destroy();
-
+    
+    // Création du graphique
+    const ctx = document.getElementById('seabornChart').getContext('2d');
+    
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+    
     chartInstance = new Chart(ctx, {
         type: 'scatter',
         data: {
-            datasets: [{
-                label: 'Points de charge observés',
-                data: scatterData,
-                backgroundColor: 'rgba(76, 114, 176, 0.7)',
-                borderColor: '#4C72B0',
-                pointRadius: 5
-            }, {
-                label: 'Ligne de Régression (Prédite)',
-                data: trendLine,
-                type: 'line',
-                borderColor: '#C44E52',
-                borderWidth: 3,
-                fill: false,
-                pointRadius: 0
-            }]
+            datasets: [
+                {
+                    label: 'Points de charge observés',
+                    data: scatterData,
+                    backgroundColor: 'rgba(76, 114, 176, 0.6)',
+                    borderColor: '#4C72B0',
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    pointBorderWidth: 2,
+                    pointBorderColor: '#ffffff'
+                },
+                {
+                    label: 'Ligne de Régression (Prédiction)',
+                    data: trendLine,
+                    type: 'line',
+                    borderColor: '#C44E52',
+                    borderWidth: 3,
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0
+                }
+            ]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
+            maintainAspectRatio: true,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `Croissance: ${context.parsed.x}% | Charge: ${Math.round(context.parsed.y)}%`;
+                        }
+                    }
+                },
+                legend: {
+                    position: 'top',
+                    labels: {
+                        font: { size: 12, family: 'Inter' }
+                    }
+                }
+            },
             scales: {
-                x: { title: { display: true, text: 'Croissance du Trafic (%)', font: {weight: 'bold'} }, grid: { color: '#fff' } },
-                y: { title: { display: true, text: 'Utilisation Ressources (%)', font: {weight: 'bold'} }, min: 0, max: 100, grid: { color: '#fff' } }
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Croissance du Trafic (%)',
+                        font: { size: 13, weight: 'bold' }
+                    },
+                    grid: { color: '#eef2f6' },
+                    min: 0,
+                    max: growth + 10
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Utilisation des Ressources (%)',
+                        font: { size: 13, weight: 'bold' }
+                    },
+                    grid: { color: '#eef2f6' },
+                    min: 0,
+                    max: 100,
+                    ticks: { stepSize: 20 }
+                }
             }
         }
     });
-
-    // Analyse Finale et Rapport
-    const predictedLoad = cpu + (growth * 0.9);
+    
+    // Analyse et recommandation
+    const predictedLoad = cpu + (growth * 0.85);
+    const finalLoad = Math.min(100, Math.round(predictedLoad));
     const statusArea = document.getElementById('status-area');
     const expertReport = document.getElementById('expert-report');
     const reportText = document.getElementById('report-text');
-
+    
     expertReport.style.display = 'block';
     
-    if(predictedLoad >= 80) {
-        statusArea.innerHTML = '<span class="status-badge critical">MIGRATION CRITIQUE REQUISE</span>';
-        reportText.innerHTML = `L'analyse statistique montre que pour une croissance de <b>${growth}%</b>, vos ressources atteindront <b>${Math.round(predictedLoad)}%</b>. 
-        Le pack <b>WordPress ${type.toUpperCase()}</b> est insuffisant pour la période à venir. Prévoyez une migration immédiate vers une infrastructure Cloud VPS pour garantir l'uptime.`;
+    const packNames = {
+        'small': 'SMALL (capacité limitée)',
+        'medium': 'MEDIUM (capacité modérée)',
+        'performance': 'PERFORMANCE (haute capacité)'
+    };
+    
+    if (finalLoad >= 85) {
+        statusArea.innerHTML = `
+            <div class="status-badge critical">
+                ⚠️ MIGRATION CRITIQUE REQUISE
+            </div>
+        `;
+        reportText.innerHTML = `
+            <strong>Analyse prédictive :</strong> Avec une croissance projetée de <strong>${growth}%</strong>, 
+            vos ressources atteindront <strong style="color:#cf1322;">${finalLoad}%</strong> de saturation.<br><br>
+            Le pack <strong>${packNames[type]}</strong> est insuffisant pour absorber cette charge dans les prochains mois.
+            <br><br>
+            <strong>Recommandation immédiate :</strong> Migration vers une infrastructure Cloud VPS avec auto-scaling pour garantir la 
+            disponibilité et les performances de votre plateforme WordPress.
+        `;
+    } else if (finalLoad >= 70) {
+        statusArea.innerHTML = `
+            <div class="status-badge" style="background:#fff7e6; color:#d46b00; border-color:#ffe58f;">
+                ⚡ SURVEILLANCE RENFORCÉE RECOMMANDÉE
+            </div>
+        `;
+        reportText.innerHTML = `
+            <strong>Analyse prédictive :</strong> Avec une croissance de <strong>${growth}%</strong>, 
+            vos ressources atteindront <strong style="color:#d46b00;">${finalLoad}%</strong> dans les prochains mois.<br><br>
+            Le pack <strong>${packNames[type]}</strong> peut encore supporter cette charge, mais une marge de sécurité réduite est observée.
+            <br><br>
+            <strong>Recommandation :</strong> Planifiez une optimisation des ressources et surveillez attentivement l'évolution des métriques.
+        `;
     } else {
-        statusArea.innerHTML = '<span class="status-badge optimal">INFRASTRUCTURE OPTIMISÉE</span>';
-        reportText.innerHTML = `Le modèle de prédiction confirme que votre pack actuel peut absorber la croissance projetée. La marge de sécurité est de <b>${Math.round(100 - predictedLoad)}%</b>. Aucun changement d'infrastructure n'est préconisé.`;
+        statusArea.innerHTML = `
+            <div class="status-badge optimal">
+                ✅ INFRASTRUCTURE OPTIMISÉE
+            </div>
+        `;
+        reportText.innerHTML = `
+            <strong>Analyse prédictive :</strong> Le modèle de régression confirme que votre infrastructure actuelle 
+            peut absorber la croissance projetée de <strong>${growth}%</strong>.<br><br>
+            Marge de sécurité estimée : <strong style="color:#389e0d;">${Math.round(100 - finalLoad)}%</strong> de ressources disponibles.<br><br>
+            <strong>Recommandation :</strong> Aucun changement d'infrastructure n'est nécessaire. Continuez à surveiller les métriques 
+            pour anticiper les besoins futurs.
+        `;
     }
-
-    setTimeout(() => showTab('resultats'), 400);
+    
+    // Redirection automatique vers l'onglet résultats
+    setTimeout(() => {
+        showTab('resultats');
+    }, 600);
 }
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', function() {
+    // S'assurer que le menu est correctement initialisé
+    if (!window.location.hash) {
+        showTab('dashboard');
+    }
+});
 </script>
 </body>
 </html>
