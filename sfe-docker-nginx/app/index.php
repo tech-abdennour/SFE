@@ -5,6 +5,52 @@ session_start();
 define('ADMIN_USERNAME', 'admin');
 define('ADMIN_PASSWORD', 'vala2026');
 
+// --- BASE DE DONNÉES SQLITE ---
+$db_file = 'vala_bleu.db';
+$pdo = null;
+
+try {
+    $pdo = new PDO("sqlite:" . $db_file);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // Création de la table des prédictions si elle n'existe pas
+    $pdo->exec("CREATE TABLE IF NOT EXISTS predictions (
+        id TEXT PRIMARY KEY,
+        created_at TEXT,
+        cpu_usage TEXT,
+        ram_usage TEXT,
+        growth_rate TEXT,
+        clients_initiaux TEXT,
+        clients_actuels TEXT,
+        wp_type TEXT,
+        predicted_load TEXT,
+        months_until_saturation TEXT,
+        status TEXT,
+        recommendation TEXT,
+        is_deleted INTEGER DEFAULT 0
+    )");
+    
+    // Création de la table des sauvegardes supprimées (corbeille)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS deleted_sauvegardes (
+        id TEXT PRIMARY KEY,
+        created_at TEXT,
+        cpu_usage TEXT,
+        ram_usage TEXT,
+        growth_rate TEXT,
+        clients_initiaux TEXT,
+        clients_actuels TEXT,
+        wp_type TEXT,
+        predicted_load TEXT,
+        months_until_saturation TEXT,
+        status TEXT,
+        recommendation TEXT,
+        deleted_at TEXT
+    )");
+} catch (Exception $e) {
+    // En cas d'erreur SQLite, on continue avec la session
+    error_log("SQLite error: " . $e->getMessage());
+}
+
 // --- GESTION DE L'AUTHENTIFICATION ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_submit'])) {
     $username = trim($_POST['username'] ?? '');
@@ -21,6 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_submit'])) {
 }
 
 if (isset($_GET['logout'])) {
+    // On ne détruit pas les données, on garde la base SQLite
     session_destroy();
     header("Location: " . $_SERVER['PHP_SELF']);
     exit();
@@ -32,43 +79,146 @@ if (isset($_SESSION['logged_in']) && isset($_SESSION['login_time']) && (time() -
     exit();
 }
 
-// Stockage des analyses en session
-if (!isset($_SESSION['predictions'])) {
-    $_SESSION['predictions'] = [];
+// --- FONCTIONS DE PERSISTANCE DES DONNÉES ---
+function getPredictions($pdo) {
+    if ($pdo === null) {
+        return isset($_SESSION['predictions']) ? $_SESSION['predictions'] : [];
+    }
+    try {
+        $stmt = $pdo->query("SELECT * FROM predictions WHERE is_deleted = 0 ORDER BY created_at DESC");
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $results;
+    } catch (Exception $e) {
+        return isset($_SESSION['predictions']) ? $_SESSION['predictions'] : [];
+    }
 }
 
-if (!isset($_SESSION['deleted_sauvegardes'])) {
-    $_SESSION['deleted_sauvegardes'] = [];
+function getDeletedSauvegardes($pdo) {
+    if ($pdo === null) {
+        return isset($_SESSION['deleted_sauvegardes']) ? $_SESSION['deleted_sauvegardes'] : [];
+    }
+    try {
+        $stmt = $pdo->query("SELECT * FROM deleted_sauvegardes ORDER BY deleted_at DESC");
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $results;
+    } catch (Exception $e) {
+        return isset($_SESSION['deleted_sauvegardes']) ? $_SESSION['deleted_sauvegardes'] : [];
+    }
 }
 
-// --- SAUVEGARDE D'UNE PRÉDICTION ---
+function savePrediction($pdo, $data) {
+    if ($pdo === null) {
+        if (!isset($_SESSION['predictions'])) $_SESSION['predictions'] = [];
+        array_unshift($_SESSION['predictions'], $data);
+        $_SESSION['predictions'] = array_slice($_SESSION['predictions'], 0, 50);
+        return true;
+    }
+    try {
+        $stmt = $pdo->prepare("INSERT INTO predictions (id, created_at, cpu_usage, ram_usage, growth_rate, clients_initiaux, clients_actuels, wp_type, predicted_load, months_until_saturation, status, recommendation, is_deleted) 
+            VALUES (:id, :created_at, :cpu_usage, :ram_usage, :growth_rate, :clients_initiaux, :clients_actuels, :wp_type, :predicted_load, :months_until_saturation, :status, :recommendation, 0)");
+        $stmt->execute([
+            ':id' => $data['id'],
+            ':created_at' => $data['created_at'],
+            ':cpu_usage' => $data['cpu_usage'],
+            ':ram_usage' => $data['ram_usage'],
+            ':growth_rate' => $data['growth_rate'],
+            ':clients_initiaux' => $data['clients_initiaux'],
+            ':clients_actuels' => $data['clients_actuels'],
+            ':wp_type' => $data['wp_type'],
+            ':predicted_load' => $data['predicted_load'],
+            ':months_until_saturation' => $data['months_until_saturation'],
+            ':status' => $data['status'],
+            ':recommendation' => $data['recommendation']
+        ]);
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function archivePrediction($pdo, $id) {
+    if ($pdo === null) {
+        foreach ($_SESSION['predictions'] as $key => $item) {
+            if ($item['id'] === $id) {
+                array_unshift($_SESSION['deleted_sauvegardes'], $item);
+                array_splice($_SESSION['predictions'], $key, 1);
+                return true;
+            }
+        }
+        return false;
+    }
+    try {
+        // Récupérer la prédiction
+        $stmt = $pdo->prepare("SELECT * FROM predictions WHERE id = :id AND is_deleted = 0");
+        $stmt->execute([':id' => $id]);
+        $pred = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($pred) {
+            // Ajouter à la corbeille
+            $stmt2 = $pdo->prepare("INSERT INTO deleted_sauvegardes (id, created_at, cpu_usage, ram_usage, growth_rate, clients_initiaux, clients_actuels, wp_type, predicted_load, months_until_saturation, status, recommendation, deleted_at) 
+                VALUES (:id, :created_at, :cpu_usage, :ram_usage, :growth_rate, :clients_initiaux, :clients_actuels, :wp_type, :predicted_load, :months_until_saturation, :status, :recommendation, :deleted_at)");
+            $stmt2->execute([
+                ':id' => $pred['id'],
+                ':created_at' => $pred['created_at'],
+                ':cpu_usage' => $pred['cpu_usage'],
+                ':ram_usage' => $pred['ram_usage'],
+                ':growth_rate' => $pred['growth_rate'],
+                ':clients_initiaux' => $pred['clients_initiaux'],
+                ':clients_actuels' => $pred['clients_actuels'],
+                ':wp_type' => $pred['wp_type'],
+                ':predicted_load' => $pred['predicted_load'],
+                ':months_until_saturation' => $pred['months_until_saturation'],
+                ':status' => $pred['status'],
+                ':recommendation' => $pred['recommendation'],
+                ':deleted_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            // Supprimer de la table principale
+            $stmt3 = $pdo->prepare("DELETE FROM predictions WHERE id = :id");
+            $stmt3->execute([':id' => $id]);
+            
+            return true;
+        }
+        return false;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+function deletePermanently($pdo, $id) {
+    if ($pdo === null) {
+        foreach ($_SESSION['deleted_sauvegardes'] as $key => $item) {
+            if ($item['id'] === $id) {
+                array_splice($_SESSION['deleted_sauvegardes'], $key, 1);
+                return true;
+            }
+        }
+        return false;
+    }
+    try {
+        $stmt = $pdo->prepare("DELETE FROM deleted_sauvegardes WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+// --- SAUVEGARDE D'UNE PRÉDICTION (AJAX) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
     header('Content-Type: application/json');
     $data = json_decode(file_get_contents('php://input'), true);
     
     if ($data && isset($_SESSION['logged_in'])) {
         if (isset($data['action']) && $data['action'] === 'delete' && isset($data['delete_id'])) {
-            foreach ($_SESSION['deleted_sauvegardes'] as $key => $item) {
-                if ($item['id'] === $data['delete_id']) {
-                    array_splice($_SESSION['deleted_sauvegardes'], $key, 1);
-                    echo json_encode(['success' => true, 'deleted' => true]);
-                    exit();
-                }
-            }
-            echo json_encode(['success' => false, 'message' => 'Sauvegarde non trouvée']);
+            $success = deletePermanently($pdo, $data['delete_id']);
+            echo json_encode(['success' => $success]);
             exit();
         }
         
         if (isset($data['action']) && $data['action'] === 'archive' && isset($data['archive_id'])) {
-            foreach ($_SESSION['predictions'] as $key => $item) {
-                if ($item['id'] === $data['archive_id']) {
-                    array_unshift($_SESSION['deleted_sauvegardes'], $item);
-                    array_splice($_SESSION['predictions'], $key, 1);
-                    echo json_encode(['success' => true, 'archived' => true]);
-                    exit();
-                }
-            }
-            echo json_encode(['success' => false, 'message' => 'Analyse non trouvée']);
+            $success = archivePrediction($pdo, $data['archive_id']);
+            echo json_encode(['success' => $success]);
             exit();
         }
         
@@ -86,18 +236,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             'status' => $data['status'],
             'recommendation' => $data['recommendation']
         ];
-        array_unshift($_SESSION['predictions'], $prediction);
-        $_SESSION['predictions'] = array_slice($_SESSION['predictions'], 0, 50);
         
-        echo json_encode(['success' => true]);
+        $success = savePrediction($pdo, $prediction);
+        echo json_encode(['success' => $success]);
         exit();
     }
     echo json_encode(['success' => false]);
     exit();
 }
 
-$history_predictions = isset($_SESSION['predictions']) ? $_SESSION['predictions'] : [];
-$deleted_sauvegardes = isset($_SESSION['deleted_sauvegardes']) ? $_SESSION['deleted_sauvegardes'] : [];
+// Récupération des données depuis la base ou la session
+$history_predictions = getPredictions($pdo);
+$deleted_sauvegardes = getDeletedSauvegardes($pdo);
 
 $active_tab = isset($_GET['tab']) ? $_GET['tab'] : (isset($_SESSION['last_tab']) ? $_SESSION['last_tab'] : 'dashboard');
 $_SESSION['last_tab'] = $active_tab;
@@ -197,6 +347,12 @@ if (!isset($_SESSION['logged_in'])) {
             color: #ff4d4f;
         }
         .footer-text { margin-top: 24px; font-size: 12px; color: #bfbfbf; }
+        .info-persist {
+            margin-top: 16px;
+            font-size: 11px;
+            color: #52c41a;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -220,12 +376,15 @@ if (!isset($_SESSION['logged_in'])) {
                 </div>
                 <div class="input-group">
                     <label>Mot de passe</label>
-                    <input type="password" name="password" placeholder="••••••••" required>
+                    <input type="password" name="password" placeholder="vala2026" required>
                 </div>
                 <button type="submit" name="login_submit">Accéder au Dashboard</button>
             </form>
+            <div class="info-persist">
+                💾 Les données sont sauvegardées et persistent après déconnexion
+            </div>
         </div>
-        <div class="footer-text">Système sécurisé - Stockage en mémoire session</div>
+        <div class="footer-text">Système sécurisé - Stockage permanent SQLite</div>
     </div>
 </body>
 </html>
@@ -614,7 +773,6 @@ exit();
             to { transform: translateY(0); opacity: 1; }
         }
         
-        /* Jauge de saturation */
         .gauge-container {
             background: #f0f0f0;
             border-radius: 20px;
@@ -652,6 +810,19 @@ exit();
             font-size: 14px;
             color: #6b7a8a;
         }
+        
+        .persist-info {
+            background: #e6f7ff;
+            border: 1px solid #91d5ff;
+            border-radius: 12px;
+            padding: 10px 16px;
+            margin-bottom: 20px;
+            font-size: 12px;
+            color: #1890ff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -686,6 +857,10 @@ exit();
         <div class="page-title">
             <h1>Analyse de Croissance WordPress</h1>
             <p>Simulateur de Capacity Planning basé sur l'IA pour l'infrastructure Vala Bleu</p>
+        </div>
+        
+        <div class="persist-info">
+            💾 Toutes vos analyses sont sauvegardées automatiquement et persistent après déconnexion (base SQLite)
         </div>
         
         <div class="card">
@@ -786,7 +961,6 @@ exit();
                 </div>
             </div>
             
-            <!-- Carte de prédiction temporelle -->
             <div class="card" id="temporel-card">
                 <h3>⏰ Prédiction Temporelle</h3>
                 <div id="temporel-content">
@@ -830,7 +1004,8 @@ exit();
                 3. Cliquez sur <strong>"GÉNÉRER LE RAPPORT"</strong><br>
                 4. Revenez ici et cliquez sur <strong>"Sauvegarder"</strong><br><br>
                 ✅ Toutes vos analyses sauvegardées seront disponibles dans l'onglet <strong>Historique</strong>.<br>
-                🗑️ Pour supprimer une analyse, allez dans l'onglet <strong>Corbeille</strong>.
+                🗑️ Pour supprimer une analyse, allez dans l'onglet <strong>Corbeille</strong>.<br><br>
+                💾 <strong>Persistance :</strong> Les données sont stockées dans une base SQLite et persistent après déconnexion.
             </p>
         </div>
     </div>
@@ -884,7 +1059,7 @@ exit();
                                     <td>
                                         <?php 
                                         $months = isset($pred['months_until_saturation']) ? $pred['months_until_saturation'] : 'N/A';
-                                        if ($months !== 'N/A' && $months > 0) {
+                                        if ($months !== 'N/A' && $months > 0 && $months < 100) {
                                             echo '<span style="color: #d46b00;">⏰ ' . $months . ' mois</span>';
                                         } elseif ($months === 0) {
                                             echo '<span style="color: #cf1322;">⚠️ Saturée</span>';
@@ -970,7 +1145,7 @@ exit();
                                     <td>
                                         <?php 
                                         $months = isset($del['months_until_saturation']) ? $del['months_until_saturation'] : 'N/A';
-                                        if ($months !== 'N/A' && $months > 0) {
+                                        if ($months !== 'N/A' && $months > 0 && $months < 100) {
                                             echo '<span style="color: #d46b00;">⏰ ' . $months . ' mois</span>';
                                         } elseif ($months === 0) {
                                             echo '<span style="color: #cf1322;">⚠️ Saturée</span>';
@@ -1298,23 +1473,18 @@ function updateLastAnalysisDisplay(analysis) {
 }
 
 function calculerMoisAvantSaturation(cpu, ram, croissance) {
-    // Utiliser la plus haute valeur entre CPU et RAM
     const chargeMax = Math.max(cpu, ram);
-    const seuilSaturation = 90; // Seuil de saturation à 90%
+    const seuilSaturation = 90;
     
     if (chargeMax >= seuilSaturation) {
-        return 0; // Déjà saturé
+        return 0;
     }
     
     if (croissance <= 0) {
-        return 999; // Jamais saturé si croissance négative ou nulle
+        return 999;
     }
     
-    // Calcul du nombre de mois pour atteindre 90%
-    // Formule: chargeMax * (1 + croissance/100)^mois = seuilSaturation
-    // mois = log(seuilSaturation/chargeMax) / log(1 + croissance/100)
     const mois = Math.log(seuilSaturation / chargeMax) / Math.log(1 + croissance / 100);
-    
     return Math.ceil(mois);
 }
 
@@ -1383,7 +1553,6 @@ function updateTemporelDisplay(months, charge, croissance) {
         message = `🟢 Infrastructure stable pour plus d'un an`;
     }
     
-    // Calcul du pourcentage pour la jauge (plus on est proche, plus la jauge est remplie)
     let gaugePercent = 0;
     if (months === 0) {
         gaugePercent = 100;
@@ -1475,14 +1644,11 @@ function runExpertAnalysis() {
     let clients_initiaux_val = parseFloat(clients_initiaux) || 0;
     let clients_actuels_val = parseFloat(clients_actuels) || 0;
     
-    // Calcul du nombre de mois avant saturation
     const monthsUntilSaturation = calculerMoisAvantSaturation(cpu, ram, growth);
     const chargeMax = Math.max(cpu, ram);
     
-    // Mettre à jour l'affichage temporel
     updateTemporelDisplay(monthsUntilSaturation, chargeMax, growth);
     
-    // Générer les résultats du graphique
     const slope = 0.85;
     const scatterData = [];
     for (let i = 0; i <= 100; i += 5) {
@@ -1577,12 +1743,9 @@ function runExpertAnalysis() {
     const statusArea = document.getElementById('status-area');
     const reportText = document.getElementById('report-text');
     
-    let status = '';
-    let recommendation = '';
-    
-    // Utiliser la recommandation basée sur les mois
     const rec = getRecommendationByMonths(monthsUntilSaturation, type, chargeMax, growth);
-    recommendation = rec.text;
+    let recommendation = rec.text;
+    let status = '';
     
     if (finalLoad >= 80 || monthsUntilSaturation <= 2) {
         status = 'CRITIQUE';
@@ -1614,7 +1777,7 @@ function runExpertAnalysis() {
         clients_actuels: clients_actuels_val,
         wp_type: type,
         predicted_load: finalLoad,
-        months_until_saturation: monthsUntilSaturation,
+        months_until_saturation: monthsUntilSaturation === 999 ? '∞' : monthsUntilSaturation,
         status: status,
         recommendation: recommendation
     };
@@ -1627,7 +1790,6 @@ function runExpertAnalysis() {
     document.getElementById('results-content').style.display = 'block';
 }
 
-// Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     let tabToShow = urlParams.get('tab');
