@@ -659,24 +659,24 @@ exit();
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Taux de Croissance Mensuel (%)</label>
+                    <label>Taux de Croissance Mensuel (%) <span class="required-field">*</span></label>
                     <input type="number" id="growth" step="1" placeholder="Saisir une valeur">
-                    <div class="warning-text">Valeur négative = décroissance</div>
+                    <div class="warning-text">Valeur négative = décroissance (obligatoire si clients non renseignés)</div>
                 </div>
             </div>
         </div>
         
         <div class="card">
-            <h3>📊 Calcul du taux de croissance client</h3>
+            <h3>📊 Calcul du taux de croissance client (optionnel)</h3>
             <div class="grid-3">
                 <div class="form-group">
                     <label>Nombre de clients initiaux</label>
-                    <input type="number" id="clients_initiaux" step="100" placeholder="Saisir une valeur" oninput="calculerTauxCroissance()">
+                    <input type="number" id="clients_initiaux" step="100" placeholder="Optionnel" oninput="calculerTauxCroissance()">
                     <div class="warning-text">Valeur négative acceptée</div>
                 </div>
                 <div class="form-group">
                     <label>Nombre de clients actuels</label>
-                    <input type="number" id="clients_actuels" step="100" placeholder="Saisir une valeur" oninput="calculerTauxCroissance(); checkClientLimit()">
+                    <input type="number" id="clients_actuels" step="100" placeholder="Optionnel" oninput="calculerTauxCroissance(); checkClientLimit()">
                     <div class="warning-text" id="clientLimitWarning"></div>
                 </div>
                 <div class="form-group">
@@ -934,7 +934,6 @@ exit();
 let chartInstance = null;
 let lastAnalysis = null;
 let analysisGenerated = false;
-let currentTab = 'dashboard';
 
 // Afficher un message temporaire
 function showPredictionMessage() {
@@ -1011,7 +1010,7 @@ function checkClientLimit() {
     const clientsActuels = document.getElementById('clients_actuels');
     let value = parseFloat(clientsActuels.value);
     
-    if (isNaN(value)) return true;
+    if (isNaN(value) || clientsActuels.value === '') return true;
     if (!pack) return true;
     
     let maxLimit = null;
@@ -1032,7 +1031,7 @@ function calculerTauxCroissance() {
     const clients_initiaux = parseFloat(document.getElementById('clients_initiaux').value) || 0;
     const clients_actuels = parseFloat(document.getElementById('clients_actuels').value) || 0;
     
-    if (clients_initiaux !== 0 && !isNaN(clients_initiaux) && document.getElementById('clients_initiaux').value !== '') {
+    if (clients_initiaux !== 0 && document.getElementById('clients_initiaux').value !== '' && document.getElementById('clients_actuels').value !== '') {
         const taux = ((clients_actuels - clients_initiaux) / clients_initiaux) * 100;
         const taux_final = Math.round(taux * 100) / 100;
         document.getElementById('taux_calcule').value = taux_final + '%';
@@ -1043,9 +1042,11 @@ function calculerTauxCroissance() {
     } else {
         document.getElementById('taux_calcule').value = '';
         document.getElementById('growth-info').style.display = 'none';
-        return 0;
+        return null;
     }
 }
+
+let currentTab = 'dashboard';
 
 function showTab(tabId) {
     currentTab = tabId;
@@ -1107,9 +1108,9 @@ async function saveCurrentAnalysis() {
                 saveBtn.textContent = '💾 Sauvegarder cette analyse';
                 saveBtn.disabled = false;
             }, 2000);
-            // Recharger l'historique sans quitter l'onglet
+            // Recharger la page pour mettre à jour l'historique mais rester sur l'onglet sauvegarde
             setTimeout(() => {
-                window.location.reload();
+                window.location.href = window.location.pathname + '?tab=sauvegarde';
             }, 1500);
         } else {
             showToast('❌ Erreur lors de la sauvegarde', true);
@@ -1154,11 +1155,6 @@ async function archiverAnalyse(id) {
             if (tbody && tbody.children.length === 0) {
                 document.getElementById('historique-container').innerHTML = '<p style="text-align: center; color: #8a9bb0; padding: 40px;">📭 Aucune analyse enregistrée. Utilisez l\'onglet Sauvegarde pour enregistrer vos analyses.</p>';
             }
-            
-            // Recharger la corbeille si nécessaire (via rechargement complet pour simplifier)
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
         } else {
             showToast('❌ Erreur lors de l\'archivage', true);
         }
@@ -1241,8 +1237,7 @@ function runExpertAnalysis() {
     const packSelect = document.getElementById('wp_type');
     const cpuInput = document.getElementById('cpu');
     const ramInput = document.getElementById('ram');
-    const clientsInit = document.getElementById('clients_initiaux');
-    const clientsAct = document.getElementById('clients_actuels');
+    const growthInput = document.getElementById('growth');
     
     if (!packSelect.value) {
         showToast('❌ Veuillez choisir un pack WordPress !', true);
@@ -1265,69 +1260,55 @@ function runExpertAnalysis() {
         return;
     }
     
-    if (clientsInit.value === '' || clientsInit.value === null) {
-        showToast('❌ Veuillez saisir le nombre de clients initiaux !', true);
-        clientsInit.classList.add('value-error');
-        setTimeout(() => clientsInit.classList.remove('value-error'), 2000);
+    // Vérifier que le taux de croissance est rempli (soit via le champ direct, soit via le calcul)
+    let growth = null;
+    
+    // Essayer d'abord de récupérer la valeur calculée depuis les clients
+    const clients_initiaux = document.getElementById('clients_initiaux').value;
+    const clients_actuels = document.getElementById('clients_actuels').value;
+    
+    if (clients_initiaux !== '' && clients_actuels !== '' && parseFloat(clients_initiaux) !== 0) {
+        // Calculer à partir des clients
+        const init = parseFloat(clients_initiaux);
+        const act = parseFloat(clients_actuels);
+        growth = ((act - init) / init) * 100;
+        document.getElementById('growth').value = Math.round(growth * 100) / 100;
+    } else if (growthInput.value !== '' && growthInput.value !== null) {
+        // Utiliser la valeur saisie directement
+        growth = parseFloat(growthInput.value);
+    } else {
+        showToast('❌ Veuillez saisir un taux de croissance OU renseigner les clients (initiaux et actuels) !', true);
+        growthInput.classList.add('value-error');
+        setTimeout(() => growthInput.classList.remove('value-error'), 2000);
         return;
     }
     
-    if (clientsAct.value === '' || clientsAct.value === null) {
-        showToast('❌ Veuillez saisir le nombre de clients actuels !', true);
-        clientsAct.classList.add('value-error');
-        setTimeout(() => clientsAct.classList.remove('value-error'), 2000);
-        return;
-    }
-    
-    // Vérifier la limite du pack
-    if (!checkClientLimit()) {
-        return;
+    // Vérifier la limite du pack (uniquement si les clients actuels sont renseignés)
+    if (clients_actuels !== '') {
+        if (!checkClientLimit()) {
+            return;
+        }
     }
     
     let cpu = parseFloat(cpuInput.value) || 0;
     let ram = parseFloat(ramInput.value) || 0;
-    
-    if (cpu < 0) {
-        showToast('❌ La charge CPU ne peut pas être négative !', true);
-        cpuInput.value = 0;
-        cpu = 0;
-    }
-    if (ram < 0) {
-        showToast('❌ La charge RAM ne peut pas être négative !', true);
-        ramInput.value = 0;
-        ram = 0;
-    }
-    
-    let growth = parseFloat(document.getElementById('growth').value) || 0;
     const type = packSelect.value;
-    let clients_initiaux = parseFloat(clientsInit.value) || 0;
-    let clients_actuels = parseFloat(clientsAct.value) || 0;
+    let clients_initiaux_val = parseFloat(clients_initiaux) || 0;
+    let clients_actuels_val = parseFloat(clients_actuels) || 0;
     
-    if (clients_initiaux === 0) {
-        showToast('⚠️ Le nombre de clients initiaux ne peut pas être nul pour le calcul de croissance !', true);
-        return;
-    }
-    
-    // Recalculer le taux de croissance si nécessaire
-    const calculatedGrowth = ((clients_actuels - clients_initiaux) / clients_initiaux) * 100;
-    if (!isNaN(calculatedGrowth)) {
-        growth = calculatedGrowth;
-        document.getElementById('growth').value = Math.round(growth * 100) / 100;
-    }
-    
-    // Générer les résultats sans changer d'onglet
+    // Générer les résultats
     const slope = 0.85;
     
     const scatterData = [];
     for (let i = 0; i <= 100; i += 5) {
-        const theoreticalValue = cpu + (i * slope * (Math.max(0, Math.min(200, growth)) / 100));
+        const theoreticalValue = cpu + (i * slope * (Math.max(-100, Math.min(200, growth)) / 100));
         const randomVariation = (Math.random() - 0.5) * 8;
-        let yValue = Math.min(100, Math.max(0, theoreticalValue + randomVariation));
+        let yValue = theoreticalValue + randomVariation;
         scatterData.push({ x: i, y: yValue });
     }
     
-    const yAt0 = Math.min(100, Math.max(0, cpu));
-    const yAt100 = Math.min(100, Math.max(0, cpu + (100 * slope * (Math.max(0, Math.min(200, growth)) / 100))));
+    const yAt0 = cpu;
+    const yAt100 = cpu + (100 * slope * (Math.max(-100, Math.min(200, growth)) / 100));
     const regressionLine = [{ x: 0, y: yAt0 }, { x: 100, y: yAt100 }];
     
     const ctx = document.getElementById('seabornChart').getContext('2d');
@@ -1406,7 +1387,7 @@ function runExpertAnalysis() {
         }
     });
     
-    const predictedLoadAtGrowth = cpu + (Math.max(0, growth) * slope);
+    const predictedLoadAtGrowth = cpu + (growth * slope);
     const finalLoad = Math.min(100, Math.max(0, Math.round(predictedLoadAtGrowth)));
     const statusArea = document.getElementById('status-area');
     const reportText = document.getElementById('report-text');
@@ -1423,10 +1404,9 @@ function runExpertAnalysis() {
     if (finalLoad >= 80) {
         status = 'CRITIQUE';
         statusArea.innerHTML = `<div class="status-badge critical">⚠️ DÉPASSEMENT DU SEUIL CRITIQUE (${finalLoad}% ≥ 80%)</div>`;
-        recommendation = `Avec ${clients_initiaux} → ${clients_actuels} clients (${Math.round(growth)}% croissance), charge prévue ${finalLoad}%. Migration recommandée.`;
+        recommendation = `Avec ${clients_initiaux_val > 0 ? clients_initiaux_val + ' → ' + clients_actuels_val + ' clients' : 'une croissance de ' + Math.round(growth) + '%'}, charge prévue ${finalLoad}%. Migration recommandée.`;
         reportText.innerHTML = `
             <strong>Analyse prédictive :</strong><br>
-            • Évolution clientèle : <strong>${clients_initiaux}</strong> → <strong>${clients_actuels}</strong> clients<br>
             • Taux de croissance : <strong>${Math.round(growth)}%</strong><br>
             • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br><br>
             Charge prédite: <strong style="color:#cf1322;">${finalLoad}%</strong><br><br>
@@ -1439,7 +1419,6 @@ function runExpertAnalysis() {
         recommendation = `Charge prévue ${finalLoad}%. Surveillance renforcée recommandée.`;
         reportText.innerHTML = `
             <strong>Analyse prédictive :</strong><br>
-            • Évolution clientèle : <strong>${clients_initiaux}</strong> → <strong>${clients_actuels}</strong> clients<br>
             • Taux de croissance : <strong>${Math.round(growth)}%</strong><br>
             • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br><br>
             Charge prédite: <strong style="color:#d46b00;">${finalLoad}%</strong><br><br>
@@ -1451,7 +1430,6 @@ function runExpertAnalysis() {
         recommendation = `Infrastructure capable d'absorber la croissance. Aucune action requise.`;
         reportText.innerHTML = `
             <strong>Analyse prédictive :</strong><br>
-            • Évolution clientèle : <strong>${clients_initiaux}</strong> → <strong>${clients_actuels}</strong> clients<br>
             • Taux de croissance : <strong>${Math.round(growth)}%</strong><br>
             • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br><br>
             Charge prédite: <strong style="color:#389e0d;">${finalLoad}%</strong><br><br>
@@ -1463,8 +1441,8 @@ function runExpertAnalysis() {
         cpu: cpu,
         ram: ram,
         growth: Math.round(growth),
-        clients_initiaux: clients_initiaux,
-        clients_actuels: clients_actuels,
+        clients_initiaux: clients_initiaux_val,
+        clients_actuels: clients_actuels_val,
         wp_type: type,
         predicted_load: finalLoad,
         status: status,
@@ -1477,14 +1455,20 @@ function runExpertAnalysis() {
     // Afficher le message de prédiction terminée
     showPredictionMessage();
     
-    // Mettre à jour l'affichage dans l'onglet résultats sans changer d'onglet
+    // Mettre à jour l'affichage dans l'onglet résultats
     document.getElementById('no-data-message').style.display = 'none';
     document.getElementById('results-content').style.display = 'block';
 }
 
-// Initialisation
+// Initialisation - gestion du paramètre tab dans l'URL
 document.addEventListener('DOMContentLoaded', function() {
-    showTab('dashboard');
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam && ['dashboard', 'resultats', 'sauvegarde', 'historique', 'supprimee'].includes(tabParam)) {
+        showTab(tabParam);
+    } else {
+        showTab('dashboard');
+    }
 });
 </script>
 </body>
