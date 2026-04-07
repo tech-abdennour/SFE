@@ -32,12 +32,11 @@ if (isset($_SESSION['logged_in']) && isset($_SESSION['login_time']) && (time() -
     exit();
 }
 
-// Stockage des analyses en session (sans BDD)
+// Stockage des analyses en session
 if (!isset($_SESSION['predictions'])) {
     $_SESSION['predictions'] = [];
 }
 
-// Stockage des sauvegardes supprimées
 if (!isset($_SESSION['deleted_sauvegardes'])) {
     $_SESSION['deleted_sauvegardes'] = [];
 }
@@ -48,7 +47,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
     $data = json_decode(file_get_contents('php://input'), true);
     
     if ($data && isset($_SESSION['logged_in'])) {
-        // Vérifier si c'est une suppression définitive
         if (isset($data['action']) && $data['action'] === 'delete' && isset($data['delete_id'])) {
             foreach ($_SESSION['deleted_sauvegardes'] as $key => $item) {
                 if ($item['id'] === $data['delete_id']) {
@@ -61,13 +59,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             exit();
         }
         
-        // Vérifier si c'est un archivage (déplacement vers supprimée)
         if (isset($data['action']) && $data['action'] === 'archive' && isset($data['archive_id'])) {
             foreach ($_SESSION['predictions'] as $key => $item) {
                 if ($item['id'] === $data['archive_id']) {
-                    // Ajouter aux sauvegardes supprimées
                     array_unshift($_SESSION['deleted_sauvegardes'], $item);
-                    // Supprimer des prédictions
                     array_splice($_SESSION['predictions'], $key, 1);
                     echo json_encode(['success' => true, 'archived' => true]);
                     exit();
@@ -77,7 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             exit();
         }
         
-        // Sinon c'est une sauvegarde normale
         $prediction = [
             'id' => uniqid(),
             'created_at' => date('Y-m-d H:i:s'),
@@ -88,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             'clients_actuels' => $data['clients_actuels'],
             'wp_type' => $data['wp_type'],
             'predicted_load' => $data['predicted_load'],
+            'months_until_saturation' => $data['months_until_saturation'],
             'status' => $data['status'],
             'recommendation' => $data['recommendation']
         ];
@@ -103,6 +98,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
 
 $history_predictions = isset($_SESSION['predictions']) ? $_SESSION['predictions'] : [];
 $deleted_sauvegardes = isset($_SESSION['deleted_sauvegardes']) ? $_SESSION['deleted_sauvegardes'] : [];
+
+$active_tab = isset($_GET['tab']) ? $_GET['tab'] : (isset($_SESSION['last_tab']) ? $_SESSION['last_tab'] : 'dashboard');
+$_SESSION['last_tab'] = $active_tab;
 
 // --- PAGE DE LOGIN ---
 if (!isset($_SESSION['logged_in'])) {
@@ -465,6 +463,11 @@ exit();
             color: #389e0d;
             border: 1px solid #b7eb8f;
         }
+        .warning {
+            background: #fff7e6;
+            color: #d46b00;
+            border: 1px solid #ffd591;
+        }
         .expert-report {
             background: linear-gradient(135deg, #f0f7ff, #ffffff);
             border-left: 4px solid #1890ff;
@@ -610,6 +613,45 @@ exit();
             from { transform: translateY(-100%); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
         }
+        
+        /* Jauge de saturation */
+        .gauge-container {
+            background: #f0f0f0;
+            border-radius: 20px;
+            height: 12px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        .gauge-fill {
+            height: 100%;
+            border-radius: 20px;
+            transition: width 0.5s ease;
+        }
+        .gauge-fill.critical { background: linear-gradient(90deg, #ff4d4f, #cf1322); }
+        .gauge-fill.warning { background: linear-gradient(90deg, #faad14, #d46b00); }
+        .gauge-fill.optimal { background: linear-gradient(90deg, #52c41a, #389e0d); }
+        
+        .saturation-card {
+            background: #f8f9fa;
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 20px;
+            border-left: 4px solid;
+        }
+        .saturation-card.urgent { border-left-color: #cf1322; background: #fff1f0; }
+        .saturation-card.warning { border-left-color: #d46b00; background: #fff7e6; }
+        .saturation-card.safe { border-left-color: #389e0d; background: #f6ffed; }
+        
+        .months-counter {
+            font-size: 32px;
+            font-weight: 700;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .months-label {
+            font-size: 14px;
+            color: #6b7a8a;
+        }
     </style>
 </head>
 <body>
@@ -621,11 +663,11 @@ exit();
     </div>
     
     <div class="menu-container">
-        <div class="menu-item active-menu" onclick="showTab('dashboard')">📊 Saisie des paramètres</div>
-        <div class="menu-item" onclick="showTab('resultats')">🔮 Résultats Prédictifs</div>
-        <div class="menu-item" onclick="showTab('sauvegarde')">💾 Sauvegarde</div>
-        <div class="menu-item" onclick="showTab('historique')">📜 Historique</div>
-        <div class="menu-item" onclick="showTab('supprimee')">🗑️ Corbeille</div>
+        <div class="menu-item <?php echo $active_tab == 'dashboard' ? 'active-menu' : ''; ?>" onclick="showTab('dashboard')">📊 Saisie des paramètres</div>
+        <div class="menu-item <?php echo $active_tab == 'resultats' ? 'active-menu' : ''; ?>" onclick="showTab('resultats')">🔮 Résultats Prédictifs</div>
+        <div class="menu-item <?php echo $active_tab == 'sauvegarde' ? 'active-menu' : ''; ?>" onclick="showTab('sauvegarde')">💾 Sauvegarde</div>
+        <div class="menu-item <?php echo $active_tab == 'historique' ? 'active-menu' : ''; ?>" onclick="showTab('historique')">📜 Historique</div>
+        <div class="menu-item <?php echo $active_tab == 'supprimee' ? 'active-menu' : ''; ?>" onclick="showTab('supprimee')">🗑️ Corbeille</div>
     </div>
     
     <div class="service-info">
@@ -640,7 +682,7 @@ exit();
 
 <div class="main-content">
     <!-- Dashboard Tab -->
-    <div id="dashboard" class="tab-content active-tab">
+    <div id="dashboard" class="tab-content <?php echo $active_tab == 'dashboard' ? 'active-tab' : ''; ?>">
         <div class="page-title">
             <h1>Analyse de Croissance WordPress</h1>
             <p>Simulateur de Capacity Planning basé sur l'IA pour l'infrastructure Vala Bleu</p>
@@ -660,8 +702,8 @@ exit();
                 </div>
                 <div class="form-group">
                     <label>Taux de Croissance Mensuel (%) <span class="required-field">*</span></label>
-                    <input type="number" id="growth" step="1" placeholder="Saisir une valeur">
-                    <div class="warning-text">Valeur négative = décroissance (obligatoire si clients non renseignés)</div>
+                    <input type="number" id="growth" step="1" placeholder="Ex: 20" value="20">
+                    <div class="warning-text">Exemple: +20% = croissance rapide</div>
                 </div>
             </div>
         </div>
@@ -695,13 +737,13 @@ exit();
             <div class="grid-2">
                 <div class="form-group">
                     <label>Charge CPU Actuelle (%) <span class="required-field">*</span></label>
-                    <input type="number" id="cpu" placeholder="Saisir une valeur" min="0" max="100" step="1" oninput="validateCpuRam(this)">
-                    <div class="warning-text">Valeur comprise entre 0 et 100% (obligatoire)</div>
+                    <input type="number" id="cpu" placeholder="Ex: 70" min="0" max="100" step="1" value="70" oninput="validateCpuRam(this)">
+                    <div class="warning-text">Exemple: 70% = charge élevée</div>
                 </div>
                 <div class="form-group">
                     <label>Consommation RAM (%) <span class="required-field">*</span></label>
-                    <input type="number" id="ram" placeholder="Saisir une valeur" min="0" max="100" step="1" oninput="validateCpuRam(this)">
-                    <div class="warning-text">Valeur comprise entre 0 et 100% (obligatoire)</div>
+                    <input type="number" id="ram" placeholder="Ex: 65" min="0" max="100" step="1" value="65" oninput="validateCpuRam(this)">
+                    <div class="warning-text">Exemple: 65% = utilisation modérée</div>
                 </div>
             </div>
             <button class="btn-primary" onclick="runExpertAnalysis()">
@@ -711,7 +753,7 @@ exit();
     </div>
     
     <!-- Résultats Tab -->
-    <div id="resultats" class="tab-content">
+    <div id="resultats" class="tab-content <?php echo $active_tab == 'resultats' ? 'active-tab' : ''; ?>">
         <div class="page-title">
             <h1>Analyse Statistique des Résultats</h1>
             <p>Modèle de prédiction basé sur la régression linéaire</p>
@@ -744,18 +786,26 @@ exit();
                 </div>
             </div>
             
+            <!-- Carte de prédiction temporelle -->
+            <div class="card" id="temporel-card">
+                <h3>⏰ Prédiction Temporelle</h3>
+                <div id="temporel-content">
+                    <!-- Rempli par JS -->
+                </div>
+            </div>
+            
             <div class="card expert-report" id="expert-report">
                 <h3>🛡️ Recommandation Expert IT</h3>
                 <p id="report-text" style="line-height: 1.6; color: #2c3e50;"></p>
                 <p style="font-size: 11px; color: #8a9bb0; margin-top: 16px; padding-top: 12px; border-top: 1px solid #eef2f6;">
-                    📐 Modèle : Régression Linéaire OLS | Seuil d'alerte : 80% | Axes : 0-100%
+                    📐 Modèle : Régression Linéaire OLS | Seuil critique : 80% | Saturation : 90%
                 </p>
             </div>
         </div>
     </div>
     
     <!-- Sauvegarde Tab -->
-    <div id="sauvegarde" class="tab-content">
+    <div id="sauvegarde" class="tab-content <?php echo $active_tab == 'sauvegarde' ? 'active-tab' : ''; ?>">
         <div class="page-title">
             <h1>💾 Sauvegarde des Analyses</h1>
             <p>Enregistrez vos prédictions pour les retrouver dans l'historique</p>
@@ -776,7 +826,7 @@ exit();
             <p style="color: #6b7a8a; line-height: 1.6;">
                 <strong>📌 Comment ça marche ?</strong><br><br>
                 1. Allez dans l'onglet <strong>Dashboard Analyse</strong><br>
-                2. Configurez vos paramètres (clients, CPU, RAM)<br>
+                2. Configurez vos paramètres (croissance, CPU, RAM)<br>
                 3. Cliquez sur <strong>"GÉNÉRER LE RAPPORT"</strong><br>
                 4. Revenez ici et cliquez sur <strong>"Sauvegarder"</strong><br><br>
                 ✅ Toutes vos analyses sauvegardées seront disponibles dans l'onglet <strong>Historique</strong>.<br>
@@ -785,8 +835,8 @@ exit();
         </div>
     </div>
     
-    <!-- Historique Tab avec colonne Taux -->
-    <div id="historique" class="tab-content">
+    <!-- Historique Tab -->
+    <div id="historique" class="tab-content <?php echo $active_tab == 'historique' ? 'active-tab' : ''; ?>">
         <div class="page-title">
             <h1>📜 Historique des Analyses</h1>
             <p>Consultez toutes vos prédictions précédentes sauvegardées</p>
@@ -805,6 +855,7 @@ exit();
                                 <th>CPU/RAM</th>
                                 <th>Pack</th>
                                 <th>Charge prédite</th>
+                                <th>Saturation (mois)</th>
                                 <th>Statut</th>
                                 <th>Action</th>
                             </tr>
@@ -820,9 +871,7 @@ exit();
                                         echo htmlspecialchars($clients_init) . ' → ' . htmlspecialchars($clients_act);
                                         ?>
                                     </td>
-                                    <td>
-                                        <strong><?php echo isset($pred['growth_rate']) ? htmlspecialchars($pred['growth_rate']) : 'N/A'; ?>%</strong>
-                                    </td>
+                                    <td><strong><?php echo isset($pred['growth_rate']) ? htmlspecialchars($pred['growth_rate']) : 'N/A'; ?>%</strong></td>
                                     <td>
                                         <?php 
                                         $cpu = isset($pred['cpu_usage']) ? $pred['cpu_usage'] : 'N/A';
@@ -832,6 +881,18 @@ exit();
                                     </td>
                                     <td><?php echo isset($pred['wp_type']) ? htmlspecialchars(strtoupper($pred['wp_type'])) : 'N/A'; ?></td>
                                     <td><strong><?php echo isset($pred['predicted_load']) ? htmlspecialchars($pred['predicted_load']) : 'N/A'; ?>%</strong></td>
+                                    <td>
+                                        <?php 
+                                        $months = isset($pred['months_until_saturation']) ? $pred['months_until_saturation'] : 'N/A';
+                                        if ($months !== 'N/A' && $months > 0) {
+                                            echo '<span style="color: #d46b00;">⏰ ' . $months . ' mois</span>';
+                                        } elseif ($months === 0) {
+                                            echo '<span style="color: #cf1322;">⚠️ Saturée</span>';
+                                        } else {
+                                            echo 'N/A';
+                                        }
+                                        ?>
+                                    </td>
                                     <td>
                                         <?php 
                                         $load = isset($pred['predicted_load']) ? $pred['predicted_load'] : 0;
@@ -860,8 +921,8 @@ exit();
         </div>
     </div>
     
-    <!-- Corbeille Tab avec colonne Taux -->
-    <div id="supprimee" class="tab-content">
+    <!-- Corbeille Tab -->
+    <div id="supprimee" class="tab-content <?php echo $active_tab == 'supprimee' ? 'active-tab' : ''; ?>">
         <div class="page-title">
             <h1>🗑️ Sauvegardes Supprimées</h1>
             <p>Analyses archivées - Suppression définitive possible</p>
@@ -880,6 +941,7 @@ exit();
                                 <th>CPU/RAM</th>
                                 <th>Pack</th>
                                 <th>Charge prédite</th>
+                                <th>Saturation (mois)</th>
                                 <th>Statut</th>
                                 <th>Action</th>
                             </tr>
@@ -895,9 +957,7 @@ exit();
                                         echo htmlspecialchars($clients_init) . ' → ' . htmlspecialchars($clients_act);
                                         ?>
                                     </td>
-                                    <td>
-                                        <strong><?php echo isset($del['growth_rate']) ? htmlspecialchars($del['growth_rate']) : 'N/A'; ?>%</strong>
-                                    </td>
+                                    <td><strong><?php echo isset($del['growth_rate']) ? htmlspecialchars($del['growth_rate']) : 'N/A'; ?>%</strong></td>
                                     <td>
                                         <?php 
                                         $cpu = isset($del['cpu_usage']) ? $del['cpu_usage'] : 'N/A';
@@ -907,6 +967,18 @@ exit();
                                     </td>
                                     <td><?php echo isset($del['wp_type']) ? htmlspecialchars(strtoupper($del['wp_type'])) : 'N/A'; ?></td>
                                     <td><strong><?php echo isset($del['predicted_load']) ? htmlspecialchars($del['predicted_load']) : 'N/A'; ?>%</strong></td>
+                                    <td>
+                                        <?php 
+                                        $months = isset($del['months_until_saturation']) ? $del['months_until_saturation'] : 'N/A';
+                                        if ($months !== 'N/A' && $months > 0) {
+                                            echo '<span style="color: #d46b00;">⏰ ' . $months . ' mois</span>';
+                                        } elseif ($months === 0) {
+                                            echo '<span style="color: #cf1322;">⚠️ Saturée</span>';
+                                        } else {
+                                            echo 'N/A';
+                                        }
+                                        ?>
+                                    </td>
                                     <td>
                                         <?php 
                                         $load = isset($del['predicted_load']) ? $del['predicted_load'] : 0;
@@ -943,7 +1015,6 @@ let chartInstance = null;
 let lastAnalysis = null;
 let analysisGenerated = false;
 
-// Afficher un message temporaire
 function showPredictionMessage() {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'prediction-message';
@@ -954,7 +1025,6 @@ function showPredictionMessage() {
     }, 4000);
 }
 
-// Validation CPU/RAM : valeurs négatives NON acceptées
 function validateCpuRam(input) {
     let value = parseFloat(input.value);
     if (isNaN(value) || input.value === '') {
@@ -987,19 +1057,14 @@ function updateClientLimit() {
     }
     
     let maxLimit = null;
-    let limitMessage = '';
-    
     if (pack === 'small') {
         maxLimit = 10000;
-        limitMessage = '⚠️ Pack SMALL: maximum 10 000 clients';
-        warningSpan.innerHTML = '<span style="color: #ff4d4f;">' + limitMessage + '</span>';
+        warningSpan.innerHTML = '<span style="color: #ff4d4f;">⚠️ Pack SMALL: maximum 10 000 clients</span>';
     } else if (pack === 'medium') {
         maxLimit = 50000;
-        limitMessage = '⚠️ Pack MEDIUM: maximum 50 000 clients';
-        warningSpan.innerHTML = '<span style="color: #ff4d4f;">' + limitMessage + '</span>';
+        warningSpan.innerHTML = '<span style="color: #ff4d4f;">⚠️ Pack MEDIUM: maximum 50 000 clients</span>';
     } else if (pack === 'performance') {
-        limitMessage = '✅ Pack PERFORMANCE: capacité illimitée';
-        warningSpan.innerHTML = '<span style="color: #52c41a;">' + limitMessage + '</span>';
+        warningSpan.innerHTML = '<span style="color: #52c41a;">✅ Pack PERFORMANCE: capacité illimitée</span>';
         clientsActuels.classList.remove('value-error');
         return;
     }
@@ -1054,10 +1119,11 @@ function calculerTauxCroissance() {
     }
 }
 
-let currentTab = 'dashboard';
-
 function showTab(tabId) {
-    currentTab = tabId;
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tabId);
+    window.history.pushState({}, '', url);
+    
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active-tab');
     });
@@ -1074,6 +1140,8 @@ function showTab(tabId) {
     if (index >= 0 && menuItems[index]) {
         menuItems[index].classList.add('active-menu');
     }
+    
+    sessionStorage.setItem('activeTab', tabId);
 }
 
 function showToast(message, isError = false) {
@@ -1117,7 +1185,7 @@ async function saveCurrentAnalysis() {
                 saveBtn.disabled = false;
             }, 2000);
             setTimeout(() => {
-                window.location.href = window.location.pathname + '?tab=sauvegarde';
+                window.location.reload();
             }, 1500);
         } else {
             showToast('❌ Erreur lors de la sauvegarde', true);
@@ -1153,13 +1221,9 @@ async function archiverAnalyse(id) {
         
         if (result.success) {
             showToast('📦 Analyse déplacée vers la corbeille');
-            const row = document.getElementById(`row-${id}`);
-            if (row) row.remove();
-            
-            const tbody = document.getElementById('historique-tbody');
-            if (tbody && tbody.children.length === 0) {
-                document.getElementById('historique-container').innerHTML = '<p style="text-align: center; color: #8a9bb0; padding: 40px;">📭 Aucune analyse enregistrée. Utilisez l\'onglet Sauvegarde pour enregistrer vos analyses.</p>';
-            }
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
         } else {
             showToast('❌ Erreur lors de l\'archivage', true);
         }
@@ -1190,13 +1254,9 @@ async function supprimerDefinitivement(id) {
         
         if (result.success) {
             showToast('🗑️ Sauvegarde supprimée définitivement');
-            const row = document.getElementById(`deleted-${id}`);
-            if (row) row.remove();
-            
-            const tbody = document.getElementById('corbeille-tbody');
-            if (tbody && tbody.children.length === 0) {
-                document.getElementById('corbeille-container').innerHTML = '<p style="text-align: center; color: #8a9bb0; padding: 40px;">🗑️ Aucune sauvegarde dans la corbeille. Utilisez "Archiver" dans l\'historique pour déplacer des analyses ici.</p>';
-            }
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
         } else {
             showToast('❌ Erreur lors de la suppression', true);
         }
@@ -1225,8 +1285,8 @@ function updateLastAnalysisDisplay(analysis) {
             <div>
                 <strong style="color: #1a2c3e;">📈 Résultat :</strong><br>
                 • Charge prédite: <strong>${analysis.predicted_load}%</strong><br>
-                • Statut: <span style="color: ${statusColor}; font-weight: bold;">${statusText}</span><br>
-                • Seuil critique: 80%
+                • Saturation dans: <strong>${analysis.months_until_saturation} mois</strong><br>
+                • Statut: <span style="color: ${statusColor}; font-weight: bold;">${statusText}</span>
             </div>
         </div>
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eef2f6;">
@@ -1237,8 +1297,128 @@ function updateLastAnalysisDisplay(analysis) {
     saveBtn.disabled = false;
 }
 
+function calculerMoisAvantSaturation(cpu, ram, croissance) {
+    // Utiliser la plus haute valeur entre CPU et RAM
+    const chargeMax = Math.max(cpu, ram);
+    const seuilSaturation = 90; // Seuil de saturation à 90%
+    
+    if (chargeMax >= seuilSaturation) {
+        return 0; // Déjà saturé
+    }
+    
+    if (croissance <= 0) {
+        return 999; // Jamais saturé si croissance négative ou nulle
+    }
+    
+    // Calcul du nombre de mois pour atteindre 90%
+    // Formule: chargeMax * (1 + croissance/100)^mois = seuilSaturation
+    // mois = log(seuilSaturation/chargeMax) / log(1 + croissance/100)
+    const mois = Math.log(seuilSaturation / chargeMax) / Math.log(1 + croissance / 100);
+    
+    return Math.ceil(mois);
+}
+
+function getRecommendationByMonths(months, pack, charge, croissance) {
+    if (months === 0) {
+        return {
+            text: `⚠️ Votre infrastructure est DÉJÀ SATURÉE (${charge}% ≥ 90%). Migration IMMÉDIATE requise vers un pack supérieur !`,
+            urgency: 'urgent'
+        };
+    } else if (months <= 2) {
+        return {
+            text: `🔴 URGENT : Saturation prévue dans ${months} mois. Avec une croissance de ${croissance}%, votre pack ${pack.toUpperCase()} sera saturé très rapidement. Migration recommandée dans les semaines à venir.`,
+            urgency: 'urgent'
+        };
+    } else if (months <= 6) {
+        return {
+            text: `🟠 ATTENTION : Saturation prévue dans ${months} mois. Avec une croissance de ${croissance}%, planifiez une migration vers un pack supérieur d'ici ${months} mois.`,
+            urgency: 'warning'
+        };
+    } else if (months <= 12) {
+        return {
+            text: `🟡 SURVEILLANCE : Saturation prévue dans ${months} mois (environ ${Math.round(months/12)} an). Avec une croissance de ${croissance}%, l'infrastructure actuelle est suffisante pour le moment. Revoyez dans 6 mois.`,
+            urgency: 'warning'
+        };
+    } else {
+        return {
+            text: `🟢 OPTIMAL : Saturation prévue dans plus d'un an (${months} mois). Avec une croissance de ${croissance}%, votre pack ${pack.toUpperCase()} est parfaitement adapté. Aucune action immédiate requise.`,
+            urgency: 'safe'
+        };
+    }
+}
+
+function updateTemporelDisplay(months, charge, croissance) {
+    const container = document.getElementById('temporel-content');
+    if (!container) return;
+    
+    let gaugeClass = 'optimal';
+    let cardClass = 'safe';
+    let emoji = '🟢';
+    let message = '';
+    
+    if (months === 0) {
+        gaugeClass = 'critical';
+        cardClass = 'urgent';
+        emoji = '🔴';
+        message = `⚠️ Votre infrastructure est DÉJÀ SATURÉE (${charge}% ≥ 90%) !`;
+    } else if (months <= 2) {
+        gaugeClass = 'critical';
+        cardClass = 'urgent';
+        emoji = '🔴';
+        message = `🔴 Saturation imminente dans ${months} mois !`;
+    } else if (months <= 6) {
+        gaugeClass = 'warning';
+        cardClass = 'warning';
+        emoji = '🟠';
+        message = `🟠 Attention : saturation dans ${months} mois`;
+    } else if (months <= 12) {
+        gaugeClass = 'warning';
+        cardClass = 'warning';
+        emoji = '🟡';
+        message = `🟡 Saturation prévue dans ${months} mois`;
+    } else {
+        gaugeClass = 'optimal';
+        cardClass = 'safe';
+        emoji = '🟢';
+        message = `🟢 Infrastructure stable pour plus d'un an`;
+    }
+    
+    // Calcul du pourcentage pour la jauge (plus on est proche, plus la jauge est remplie)
+    let gaugePercent = 0;
+    if (months === 0) {
+        gaugePercent = 100;
+    } else if (months <= 24) {
+        gaugePercent = Math.min(100, Math.max(0, 100 - (months / 24 * 100)));
+    } else {
+        gaugePercent = 0;
+    }
+    
+    container.innerHTML = `
+        <div class="saturation-card ${cardClass}" style="padding: 20px; border-radius: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px;">
+                <div>
+                    <span class="months-counter">${months === 999 ? '∞' : months}</span>
+                    <span class="months-label">mois avant saturation (seuil 90%)</span>
+                </div>
+                <div style="font-size: 32px;">${emoji}</div>
+            </div>
+            
+            <div class="gauge-container">
+                <div class="gauge-fill ${gaugeClass}" style="width: ${gaugePercent}%;"></div>
+            </div>
+            
+            <div style="margin-top: 15px; font-size: 14px;">
+                <strong>📊 Analyse :</strong><br>
+                • Croissance mensuelle : <strong>${croissance}%</strong><br>
+                • Charge actuelle max : <strong>${charge}%</strong><br>
+                • Seuil de saturation : <strong>90%</strong><br><br>
+                <strong>${message}</strong>
+            </div>
+        </div>
+    `;
+}
+
 function runExpertAnalysis() {
-    // Vérifier que tous les champs obligatoires sont remplis
     const packSelect = document.getElementById('wp_type');
     const cpuInput = document.getElementById('cpu');
     const ramInput = document.getElementById('ram');
@@ -1265,7 +1445,6 @@ function runExpertAnalysis() {
         return;
     }
     
-    // Vérifier que le taux de croissance est rempli
     let growth = null;
     const clients_initiaux = document.getElementById('clients_initiaux').value;
     const clients_actuels = document.getElementById('clients_actuels').value;
@@ -1284,7 +1463,6 @@ function runExpertAnalysis() {
         return;
     }
     
-    // Vérifier la limite du pack
     if (clients_actuels !== '') {
         if (!checkClientLimit()) {
             return;
@@ -1297,9 +1475,15 @@ function runExpertAnalysis() {
     let clients_initiaux_val = parseFloat(clients_initiaux) || 0;
     let clients_actuels_val = parseFloat(clients_actuels) || 0;
     
-    // Générer les résultats
-    const slope = 0.85;
+    // Calcul du nombre de mois avant saturation
+    const monthsUntilSaturation = calculerMoisAvantSaturation(cpu, ram, growth);
+    const chargeMax = Math.max(cpu, ram);
     
+    // Mettre à jour l'affichage temporel
+    updateTemporelDisplay(monthsUntilSaturation, chargeMax, growth);
+    
+    // Générer les résultats du graphique
+    const slope = 0.85;
     const scatterData = [];
     for (let i = 0; i <= 100; i += 5) {
         const theoreticalValue = cpu + (i * slope * (Math.max(-100, Math.min(200, growth)) / 100));
@@ -1396,41 +1580,31 @@ function runExpertAnalysis() {
     let status = '';
     let recommendation = '';
     
-    if (finalLoad >= 80) {
+    // Utiliser la recommandation basée sur les mois
+    const rec = getRecommendationByMonths(monthsUntilSaturation, type, chargeMax, growth);
+    recommendation = rec.text;
+    
+    if (finalLoad >= 80 || monthsUntilSaturation <= 2) {
         status = 'CRITIQUE';
-        statusArea.innerHTML = `<div class="status-badge critical">⚠️ DÉPASSEMENT DU SEUIL CRITIQUE (${finalLoad}% ≥ 80%)</div>`;
-        recommendation = `Avec ${clients_initiaux_val > 0 ? clients_initiaux_val + ' → ' + clients_actuels_val + ' clients' : 'une croissance de ' + Math.round(growth) + '%'}, charge prévue ${finalLoad}%. Migration recommandée.`;
-        reportText.innerHTML = `
-            <strong>Analyse prédictive :</strong><br>
-            • Taux de croissance : <strong>${Math.round(growth)}%</strong><br>
-            • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br><br>
-            Charge prédite: <strong style="color:#cf1322;">${finalLoad}%</strong><br><br>
-            <strong>⚠️ SEUIL CRITIQUE DÉPASSÉ</strong><br>
-            <strong>Recommandation :</strong> Migration immédiate recommandée.
-        `;
-    } else if (finalLoad >= 70) {
+        statusArea.innerHTML = `<div class="status-badge critical">⚠️ CRITIQUE - Saturation dans ${monthsUntilSaturation} mois (${finalLoad}% charge)</div>`;
+    } else if (finalLoad >= 70 || monthsUntilSaturation <= 6) {
         status = 'SURVEILLANCE';
-        statusArea.innerHTML = `<div class="status-badge" style="background:#fff7e6; color:#d46b00;">⚡ APPROCHE DU SEUIL CRITIQUE (${finalLoad}% / 80%)</div>`;
-        recommendation = `Charge prévue ${finalLoad}%. Surveillance renforcée recommandée.`;
-        reportText.innerHTML = `
-            <strong>Analyse prédictive :</strong><br>
-            • Taux de croissance : <strong>${Math.round(growth)}%</strong><br>
-            • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br><br>
-            Charge prédite: <strong style="color:#d46b00;">${finalLoad}%</strong><br><br>
-            <strong>Recommandation :</strong> Planifiez une optimisation des ressources.
-        `;
+        statusArea.innerHTML = `<div class="status-badge warning">⚡ SURVEILLANCE - Saturation dans ${monthsUntilSaturation} mois</div>`;
     } else {
         status = 'OPTIMAL';
-        statusArea.innerHTML = `<div class="status-badge optimal">✅ INFRASTRUCTURE OPTIMISÉE (${finalLoad}% < 80%)</div>`;
-        recommendation = `Infrastructure capable d'absorber la croissance. Aucune action requise.`;
-        reportText.innerHTML = `
-            <strong>Analyse prédictive :</strong><br>
-            • Taux de croissance : <strong>${Math.round(growth)}%</strong><br>
-            • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br><br>
-            Charge prédite: <strong style="color:#389e0d;">${finalLoad}%</strong><br><br>
-            <strong>Recommandation :</strong> Surveillance continue recommandée.
-        `;
+        statusArea.innerHTML = `<div class="status-badge optimal">✅ OPTIMAL - Infrastructure stable (${monthsUntilSaturation} mois avant saturation)</div>`;
     }
+    
+    reportText.innerHTML = `
+        <strong>Analyse prédictive :</strong><br>
+        • Taux de croissance : <strong>${Math.round(growth)}%</strong> par mois<br>
+        • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br>
+        • Charge max actuelle : <strong>${chargeMax}%</strong><br><br>
+        <strong>⏰ Prédiction temporelle :</strong><br>
+        • Saturation (90%) prévue dans <strong style="font-size: 18px;">${monthsUntilSaturation === 999 ? '∞' : monthsUntilSaturation}</strong> mois<br><br>
+        <strong>💡 Recommandation :</strong><br>
+        ${recommendation}
+    `;
     
     lastAnalysis = {
         cpu: cpu,
@@ -1440,6 +1614,7 @@ function runExpertAnalysis() {
         clients_actuels: clients_actuels_val,
         wp_type: type,
         predicted_load: finalLoad,
+        months_until_saturation: monthsUntilSaturation,
         status: status,
         recommendation: recommendation
     };
@@ -1455,12 +1630,17 @@ function runExpertAnalysis() {
 // Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
-    const tabParam = urlParams.get('tab');
-    if (tabParam && ['dashboard', 'resultats', 'sauvegarde', 'historique', 'supprimee'].includes(tabParam)) {
-        showTab(tabParam);
-    } else {
-        showTab('dashboard');
+    let tabToShow = urlParams.get('tab');
+    
+    if (!tabToShow) {
+        tabToShow = sessionStorage.getItem('activeTab');
     }
+    
+    if (!tabToShow || !['dashboard', 'resultats', 'sauvegarde', 'historique', 'supprimee'].includes(tabToShow)) {
+        tabToShow = 'dashboard';
+    }
+    
+    showTab(tabToShow);
 });
 </script>
 </body>
