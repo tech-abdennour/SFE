@@ -19,7 +19,7 @@ services:
     container_name: php_fpm
     volumes:
       - ./app:/var/www/html
-      - /var/run/docker.sock:/var/run/docker.sock   # ← ESSENTIEL
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - sfe_net
 
@@ -36,6 +36,20 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - sfe_net
+
+  # --- LE NOUVEAU SERVICE DEBIAN (Bien aligné à gauche) ---
+  debian_worker:
+    build: 
+      context: .
+      dockerfile: ./services_debian/Dockerfile
+    container_name: debian_worker
+    volumes:
+      - ./backups:/var/backups
+    networks:
+      - sfe_net
+    depends_on:
+      - db
+    restart: always
 
 networks:
   sfe_net:
