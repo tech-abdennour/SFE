@@ -7,7 +7,6 @@ services:
     ports:
       - "80:80"
     volumes:
-      # On lie le fichier de config et le dossier contenant index.php
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
       - ./app:/var/www/html
     depends_on:
@@ -19,8 +18,8 @@ services:
     build: ./php
     container_name: php_fpm
     volumes:
-      # IMPORTANT : PHP doit aussi avoir accès au code pour l'exécuter
       - ./app:/var/www/html
+      - /var/run/docker.sock:/var/run/docker.sock   # ← ESSENTIEL
     networks:
       - sfe_net
 
