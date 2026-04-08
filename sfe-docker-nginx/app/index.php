@@ -47,7 +47,6 @@ try {
         deleted_at TEXT
     )");
 } catch (Exception $e) {
-    // En cas d'erreur SQLite, on continue avec la session
     error_log("SQLite error: " . $e->getMessage());
 }
 
@@ -67,7 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_submit'])) {
 }
 
 if (isset($_GET['logout'])) {
-    // On ne détruit pas les données, on garde la base SQLite
     session_destroy();
     header("Location: " . $_SERVER['PHP_SELF']);
     exit();
@@ -148,13 +146,11 @@ function archivePrediction($pdo, $id) {
         return false;
     }
     try {
-        // Récupérer la prédiction
         $stmt = $pdo->prepare("SELECT * FROM predictions WHERE id = :id AND is_deleted = 0");
         $stmt->execute([':id' => $id]);
         $pred = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($pred) {
-            // Ajouter à la corbeille
             $stmt2 = $pdo->prepare("INSERT INTO deleted_sauvegardes (id, created_at, cpu_usage, ram_usage, growth_rate, clients_initiaux, clients_actuels, wp_type, predicted_load, months_until_saturation, status, recommendation, deleted_at) 
                 VALUES (:id, :created_at, :cpu_usage, :ram_usage, :growth_rate, :clients_initiaux, :clients_actuels, :wp_type, :predicted_load, :months_until_saturation, :status, :recommendation, :deleted_at)");
             $stmt2->execute([
@@ -173,10 +169,8 @@ function archivePrediction($pdo, $id) {
                 ':deleted_at' => date('Y-m-d H:i:s')
             ]);
             
-            // Supprimer de la table principale
             $stmt3 = $pdo->prepare("DELETE FROM predictions WHERE id = :id");
             $stmt3->execute([':id' => $id]);
-            
             return true;
         }
         return false;
@@ -245,10 +239,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
     exit();
 }
 
-// Récupération des données depuis la base ou la session
 $history_predictions = getPredictions($pdo);
 $deleted_sauvegardes = getDeletedSauvegardes($pdo);
-
 $active_tab = isset($_GET['tab']) ? $_GET['tab'] : (isset($_SESSION['last_tab']) ? $_SESSION['last_tab'] : 'dashboard');
 $_SESSION['last_tab'] = $active_tab;
 
@@ -261,6 +253,7 @@ if (!isset($_SESSION['logged_in'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vala Bleu - Authentification Expert</title>
+	<link rel="icon" type="image/x-icon" href="vala-svgrepo-com.ico">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -372,11 +365,11 @@ if (!isset($_SESSION['logged_in'])) {
             <form method="POST">
                 <div class="input-group">
                     <label>Identifiant</label>
-                    <input type="text" name="username" placeholder="admin" required autofocus>
+                    <input type="text" name="username">
                 </div>
                 <div class="input-group">
                     <label>Mot de passe</label>
-                    <input type="password" name="password" placeholder="vala2026" required>
+                    <input type="password" name="password">
                 </div>
                 <button type="submit" name="login_submit">Accéder au Dashboard</button>
             </form>
@@ -877,8 +870,8 @@ exit();
                 </div>
                 <div class="form-group">
                     <label>Taux de Croissance Mensuel (%) <span class="required-field">*</span></label>
-                    <input type="number" id="growth" step="1" placeholder="Ex: 20" value="20">
-                    <div class="warning-text">Exemple: +20% = croissance rapide</div>
+                    <input type="number" id="growth" step="1" placeholder="Ex: 20">
+                    <div class="warning-text">Exemple: +70% = croissance rapide</div>
                 </div>
             </div>
         </div>
@@ -889,7 +882,9 @@ exit();
                 <div class="form-group">
                     <label>Nombre de clients initiaux</label>
                     <input type="number" id="clients_initiaux" step="100" placeholder="Optionnel" oninput="calculerTauxCroissance()">
-                    <div class="warning-text">Valeur négative acceptée</div>
+					<div id="error-message" style="color: #ff4d4f; font-size: 12px; margin-top: 5px; display: none;">
+						⚠️ Le nombre de clients ne peut pas être négatif.
+					</div>
                 </div>
                 <div class="form-group">
                     <label>Nombre de clients actuels</label>
@@ -912,13 +907,13 @@ exit();
             <div class="grid-2">
                 <div class="form-group">
                     <label>Charge CPU Actuelle (%) <span class="required-field">*</span></label>
-                    <input type="number" id="cpu" placeholder="Ex: 70" min="0" max="100" step="1" value="70" oninput="validateCpuRam(this)">
-                    <div class="warning-text">Exemple: 70% = charge élevée</div>
+                    <input type="number" id="cpu" placeholder="Ex: 70" min="0" max="100" step="1" oninput="validateCpuRam(this)">
+                    <div class="warning-text">ne dépasser pas 100%</div>
                 </div>
                 <div class="form-group">
                     <label>Consommation RAM (%) <span class="required-field">*</span></label>
-                    <input type="number" id="ram" placeholder="Ex: 65" min="0" max="100" step="1" value="65" oninput="validateCpuRam(this)">
-                    <div class="warning-text">Exemple: 65% = utilisation modérée</div>
+                    <input type="number" id="ram" placeholder="Ex: 65" min="0" max="100" step="1" oninput="validateCpuRam(this)">
+                    <div class="warning-text">ne dépasser pas 100%</div>
                 </div>
             </div>
             <button class="btn-primary" onclick="runExpertAnalysis()">
@@ -1592,6 +1587,29 @@ function runExpertAnalysis() {
     const cpuInput = document.getElementById('cpu');
     const ramInput = document.getElementById('ram');
     const growthInput = document.getElementById('growth');
+    const clientsInit = document.getElementById('clients_initiaux');
+    const clientsAct = document.getElementById('clients_actuels');
+    
+    let hasError = false;
+    
+    if (parseFloat(cpuInput.value) < 0) {
+        showToast('❌ La charge CPU ne peut pas être négative !', true);
+        hasError = true;
+    }
+    if (parseFloat(ramInput.value) < 0) {
+        showToast('❌ La charge RAM ne peut pas être négative !', true);
+        hasError = true;
+    }
+    if (parseFloat(clientsInit.value) < 0) {
+        showToast('❌ Le nombre de clients initiaux ne peut pas être négatif !', true);
+        hasError = true;
+    }
+    if (parseFloat(clientsAct.value) < 0) {
+        showToast('❌ Le nombre de clients actuels ne peut pas être négatif !', true);
+        hasError = true;
+    }
+    
+    if (hasError) return;
     
     if (!packSelect.value) {
         showToast('❌ Veuillez choisir un pack WordPress !', true);
@@ -1600,25 +1618,11 @@ function runExpertAnalysis() {
         return;
     }
     
-    if (cpuInput.value === '' || cpuInput.value === null) {
-        showToast('❌ Veuillez saisir la charge CPU !', true);
-        cpuInput.classList.add('value-error');
-        setTimeout(() => cpuInput.classList.remove('value-error'), 2000);
-        return;
-    }
-    
-    if (ramInput.value === '' || ramInput.value === null) {
-        showToast('❌ Veuillez saisir la charge RAM !', true);
-        ramInput.classList.add('value-error');
-        setTimeout(() => ramInput.classList.remove('value-error'), 2000);
-        return;
-    }
-    
     let growth = null;
-    const clients_initiaux = document.getElementById('clients_initiaux').value;
-    const clients_actuels = document.getElementById('clients_actuels').value;
+    const clients_initiaux = clientsInit.value;
+    const clients_actuels = clientsAct.value;
     
-    if (clients_initiaux !== '' && clients_actuels !== '' && parseFloat(clients_initiaux) !== 0) {
+    if (clients_initiaux !== '' && clients_actuels !== '' && parseFloat(clients_initiaux) !== 0 && parseFloat(clients_initiaux) > 0) {
         const init = parseFloat(clients_initiaux);
         const act = parseFloat(clients_actuels);
         growth = ((act - init) / init) * 100;
@@ -1626,16 +1630,7 @@ function runExpertAnalysis() {
     } else if (growthInput.value !== '' && growthInput.value !== null) {
         growth = parseFloat(growthInput.value);
     } else {
-        showToast('❌ Veuillez saisir un taux de croissance OU renseigner les clients (initiaux et actuels) !', true);
-        growthInput.classList.add('value-error');
-        setTimeout(() => growthInput.classList.remove('value-error'), 2000);
-        return;
-    }
-    
-    if (clients_actuels !== '') {
-        if (!checkClientLimit()) {
-            return;
-        }
+        growth = 0;
     }
     
     let cpu = parseFloat(cpuInput.value) || 0;
@@ -1654,8 +1649,7 @@ function runExpertAnalysis() {
     for (let i = 0; i <= 100; i += 5) {
         const theoreticalValue = cpu + (i * slope * (Math.max(-100, Math.min(200, growth)) / 100));
         const randomVariation = (Math.random() - 0.5) * 8;
-        let yValue = theoreticalValue + randomVariation;
-        scatterData.push({ x: i, y: yValue });
+        scatterData.push({ x: i, y: theoreticalValue + randomVariation });
     }
     
     const yAt0 = cpu;
@@ -1788,6 +1782,17 @@ function runExpertAnalysis() {
     showPredictionMessage();
     document.getElementById('no-data-message').style.display = 'none';
     document.getElementById('results-content').style.display = 'block';
+    
+    // Changer d'onglet vers Résultats
+    showTab('resultats');
+    
+    // SCROLL EN HAUT DE PAGE (CORRECTION)
+    setTimeout(() => {
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }, 100);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
