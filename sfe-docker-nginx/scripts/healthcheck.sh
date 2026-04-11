@@ -1,27 +1,44 @@
 #!/bin/bash
 
+# ==================================================
+# Script : healthcheck.sh
+# Rôle   : Vérifier l’état des conteneurs Docker
+#          et les relancer automatiquement si arrêtés
+# ==================================================
+
 # --- CONFIGURATION ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-mkdir -p "$PROJECT_DIR/logs"
+LOG_DIR="$PROJECT_DIR/logs"
 
-# Format : jour_heure_minute (ex: 08-04-2026_19-45.txt)
-DATE_NOM_FICHIER=$(date "+%d-%m-%Y_%H:%M")
-LOGFILE="$PROJECT_DIR/logs/healthcheck_$DATE_NOM_FICHIER.txt"
+mkdir -p "$LOG_DIR"
+
+# Nom du fichier log (sans ':' pour compatibilité Windows)
+DATE_NOM_FICHIER=$(date "+%d-%m-%Y_%H-%M")
+LOGFILE="$LOG_DIR/healthcheck_$DATE_NOM_FICHIER.txt"
 
 DATE_LOG=$(date "+%Y-%m-%d %H:%M:%S")
-SERVICES=("nginx_web" "php_fpm" "mariadb_db") [cite: 3]
+
+# Liste des conteneurs à surveiller
+SERVICES=("nginx_web" "php_fpm" "mariadb_db")
 
 # --- EXÉCUTION ---
-echo "[$DATE_LOG] Vérification des services Docker" >> "$LOGFILE"
+echo "[$DATE_LOG] 🔍 Vérification des services Docker" >> "$LOGFILE"
 
 for SERVICE in "${SERVICES[@]}"; do
-    # Vérification de l'état du conteneur [cite: 3]
-    STATUS=$(docker inspect --format="{{.State.Running}}" $SERVICE 2>/dev/null) [cite: 3]
+
+    # Vérifier si le conteneur existe
+    if ! docker inspect "$SERVICE" >/dev/null 2>&1; then
+        echo "[$DATE_LOG] ⚠️  $SERVICE n'existe pas" >> "$LOGFILE"
+        continue
+    fi
+
+    # Vérifier l'état du conteneur
+    STATUS=$(docker inspect --format="{{.State.Running}}" "$SERVICE" 2>/dev/null)
 
     if [ "$STATUS" != "true" ]; then
         echo "[$DATE_LOG] ❌ $SERVICE arrêté. Tentative de relance..." >> "$LOGFILE"
-        docker start $SERVICE >> "$LOGFILE" 2>&1 [cite: 3]
+        docker start "$SERVICE" >> "$LOGFILE" 2>&1
     else
         echo "[$DATE_LOG] ✅ $SERVICE en ligne" >> "$LOGFILE"
     fi
