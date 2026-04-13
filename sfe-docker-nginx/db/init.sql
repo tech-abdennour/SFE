@@ -1,36 +1,89 @@
--- Création de la base de données
-CREATE DATABASE IF NOT EXISTS vala_bleu_db;
-USE vala_bleu_db;
+-- =====================================================
+-- Initialisation base de données
+-- Projet : VALA WordPress Infrastructure Intelligence
+-- =====================================================
 
--- Table des utilisateurs
-CREATE TABLE IF NOT EXISTS users (
+-- Création base si inexistante
+CREATE DATABASE IF NOT EXISTS vala_monitor
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE vala_monitor;
+
+-- =====================================================
+-- Table : server_metrics
+-- Données trafic + ressources serveur (time series)
+-- =====================================================
+CREATE TABLE server_metrics (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    collected_at DATETIME NOT NULL,
+
+    -- Trafic
+    visitors_per_day INT NOT NULL,
+    pageviews_per_day INT NOT NULL,
+    traffic_growth_rate FLOAT NOT NULL,
+    peak_hours VARCHAR(50),
+
+    -- Ressources serveur
+    cpu_usage_avg FLOAT NOT NULL,
+    cpu_usage_peak FLOAT NOT NULL,
+    ram_usage_avg FLOAT NOT NULL,
+    disk_io FLOAT NOT NULL,
+    response_time FLOAT NOT NULL,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+) ENGINE=InnoDB;
 
--- Table des prédictions (historique complet)
-CREATE TABLE IF NOT EXISTS predictions (
+-- =====================================================
+-- Table : wordpress_config
+-- Paramètres WordPress influençant la performance
+-- =====================================================
+CREATE TABLE wordpress_config (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    cpu_usage INT NOT NULL,
-    ram_usage INT NOT NULL,
-    growth_rate INT NOT NULL,
-    wp_type VARCHAR(50) NOT NULL,
-    predicted_load DECIMAL(5,2) NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    recommendation TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
 
--- Insertion de l'utilisateur admin (mot de passe: vala2026)
--- Hash du mot de passe: vala2026 = MD5('vala2026') -> 6c6c4d3c7e5c9d4e8f2a1b3c5d7e9f0a
-INSERT INTO users (username, password_hash) 
-VALUES ('admin', MD5('vala2026'))
-ON DUPLICATE KEY UPDATE username = username;
+    plugin_count INT NOT NULL,
+    heavy_plugins BOOLEAN NOT NULL,
+    php_version VARCHAR(10) NOT NULL,
+    cache_enabled BOOLEAN NOT NULL,
+    cdn_enabled BOOLEAN NOT NULL,
 
--- Index pour les recherches rapides
-CREATE INDEX idx_user_date ON predictions(user_id, created_at);
-CREATE INDEX idx_predicted_load ON predictions(predicted_load);
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- =====================================================
+-- Table : growth_history
+-- Historique & contexte décisionnel
+-- =====================================================
+CREATE TABLE growth_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
+    avg_growth_30d FLOAT NOT NULL,
+    avg_growth_90d FLOAT NOT NULL,
+    previous_plan ENUM('Small', 'Medium', 'Large') NOT NULL,
+    incident_count INT NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- =====================================================
+-- Table : prediction_results
+-- Résultats du modèle ML (XGBoost)
+-- =====================================================
+CREATE TABLE prediction_results (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
+    prediction_date DATETIME NOT NULL,
+    upgrade_required BOOLEAN NOT NULL,
+    confidence_score FLOAT NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- =====================================================
+-- Index pour performances (time series & ML)
+-- =====================================================
+CREATE INDEX idx_server_metrics_time
+ON server_metrics (collected_at);
+
+CREATE INDEX idx_prediction_date
+ON prediction_results (prediction_date);

@@ -17,14 +17,26 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS predictions (
         id TEXT PRIMARY KEY,
         created_at TEXT,
-        cpu_usage TEXT,
-        ram_usage TEXT,
-        growth_rate TEXT,
-        clients_initiaux TEXT,
-        clients_actuels TEXT,
+        cpu_usage_avg TEXT,
+        cpu_usage_peak TEXT,
+        ram_usage_avg TEXT,
+        disk_io TEXT,
+        response_time TEXT,
+        visitors_per_day TEXT,
+        pageviews_per_day TEXT,
+        traffic_growth_rate TEXT,
+        peak_hours_start TEXT,
+        peak_hours_end TEXT,
+        peak_hours TEXT,
+        plugin_count TEXT,
+        heavy_plugins TEXT,
+        php_version TEXT,
+        cache_enabled TEXT,
+        cdn_enabled TEXT,
         wp_type TEXT,
         predicted_load TEXT,
-        months_until_saturation TEXT,
+        predicted_saturation_months TEXT,
+        xgboost_score TEXT,
         status TEXT,
         recommendation TEXT,
         is_deleted INTEGER DEFAULT 0
@@ -34,14 +46,26 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS deleted_sauvegardes (
         id TEXT PRIMARY KEY,
         created_at TEXT,
-        cpu_usage TEXT,
-        ram_usage TEXT,
-        growth_rate TEXT,
-        clients_initiaux TEXT,
-        clients_actuels TEXT,
+        cpu_usage_avg TEXT,
+        cpu_usage_peak TEXT,
+        ram_usage_avg TEXT,
+        disk_io TEXT,
+        response_time TEXT,
+        visitors_per_day TEXT,
+        pageviews_per_day TEXT,
+        traffic_growth_rate TEXT,
+        peak_hours_start TEXT,
+        peak_hours_end TEXT,
+        peak_hours TEXT,
+        plugin_count TEXT,
+        heavy_plugins TEXT,
+        php_version TEXT,
+        cache_enabled TEXT,
+        cdn_enabled TEXT,
         wp_type TEXT,
         predicted_load TEXT,
-        months_until_saturation TEXT,
+        predicted_saturation_months TEXT,
+        xgboost_score TEXT,
         status TEXT,
         recommendation TEXT,
         deleted_at TEXT
@@ -49,6 +73,227 @@ try {
 } catch (Exception $e) {
     error_log("SQLite error: " . $e->getMessage());
 }
+
+// --- MODÈLE XGBOOST SIMULÉ ---
+class XGBoostPredictor {
+    
+    private $feature_weights = [
+        'cpu_usage_avg' => 0.15,
+        'cpu_usage_peak' => 0.12,
+        'ram_usage_avg' => 0.13,
+        'disk_io' => 0.05,
+        'response_time' => 0.08,
+        'visitors_per_day' => 0.10,
+        'pageviews_per_day' => 0.08,
+        'traffic_growth_rate' => 0.12,
+        'peak_hours' => 0.04,
+        'plugin_count' => 0.06,
+        'heavy_plugins' => 0.04,
+        'php_version' => 0.02,
+        'cache_enabled' => 0.03,
+        'cdn_enabled' => 0.03,
+        'wp_type' => 0.05
+    ];
+    
+    private $heavy_plugins_risk = [
+        'woocommerce' => 0.25,
+        'elementor' => 0.20,
+        'wpml' => 0.15,
+        'yoast' => 0.10,
+        'revslider' => 0.12,
+        'gravityforms' => 0.08
+    ];
+    
+    private $php_scores = [
+        '7.4' => 0.85,
+        '8.0' => 0.90,
+        '8.1' => 0.95,
+        '8.2' => 1.00,
+        '8.3' => 1.05
+    ];
+    
+    private $pack_capacity = [
+        'small' => ['max_visitors' => 10000, 'base_load' => 40, 'recommended_cpu' => 70],
+        'medium' => ['max_visitors' => 50000, 'base_load' => 30, 'recommended_cpu' => 65],
+        'performance' => ['max_visitors' => 1000000, 'base_load' => 20, 'recommended_cpu' => 50],
+        'enterprise' => ['max_visitors' => 9999999, 'base_load' => 15, 'recommended_cpu' => 40]
+    ];
+    
+    public function predict($params) {
+        $score = 0;
+        
+        $cpu_avg = floatval($params['cpu_usage_avg'] ?? 50);
+        $cpu_peak = floatval($params['cpu_usage_peak'] ?? 70);
+        $ram_avg = floatval($params['ram_usage_avg'] ?? 50);
+        
+        $cpu_score = ($cpu_avg * 0.6 + $cpu_peak * 0.4) / 100;
+        $score += $cpu_score * 15 * $this->feature_weights['cpu_usage_avg'];
+        
+        $disk_io = floatval($params['disk_io'] ?? 50);
+        $score += ($disk_io / 100) * 5 * $this->feature_weights['disk_io'];
+        
+        $response_time = floatval($params['response_time'] ?? 500);
+        $response_score = min(1, $response_time / 2000);
+        $score += $response_score * 8 * $this->feature_weights['response_time'];
+        
+        $visitors = floatval($params['visitors_per_day'] ?? 1000);
+        $pageviews = floatval($params['pageviews_per_day'] ?? 3000);
+        $growth_rate = floatval($params['traffic_growth_rate'] ?? 10);
+        
+        $visitors_score = min(1, $visitors / 50000);
+        $pageviews_score = min(1, $pageviews / 150000);
+        $score += ($visitors_score * 0.5 + $pageviews_score * 0.5) * 10 * $this->feature_weights['visitors_per_day'];
+        
+        $growth_score = min(1, $growth_rate / 100);
+        $score += $growth_score * 12 * $this->feature_weights['traffic_growth_rate'];
+        
+        $plugin_count = intval($params['plugin_count'] ?? 20);
+        $plugin_score = min(1, $plugin_count / 50);
+        $score += $plugin_score * 6 * $this->feature_weights['plugin_count'];
+        
+        $heavy_plugins = explode(',', strtolower($params['heavy_plugins'] ?? ''));
+        $heavy_risk = 0;
+        foreach ($heavy_plugins as $plugin) {
+            $plugin = trim($plugin);
+            if (isset($this->heavy_plugins_risk[$plugin])) {
+                $heavy_risk += $this->heavy_plugins_risk[$plugin];
+            }
+        }
+        $heavy_risk = min(1, $heavy_risk);
+        $score += $heavy_risk * 4 * $this->feature_weights['heavy_plugins'];
+        
+        $php_version = $params['php_version'] ?? '7.4';
+        $php_score = $this->php_scores[$php_version] ?? 0.85;
+        $php_penalty = (1 - ($php_score - 0.8) / 0.3);
+        $php_penalty = max(0, min(1, $php_penalty));
+        $score += $php_penalty * 2 * $this->feature_weights['php_version'];
+        
+        $cache_enabled = ($params['cache_enabled'] ?? 'non') === 'oui';
+        if (!$cache_enabled) {
+            $score += 3 * $this->feature_weights['cache_enabled'];
+        }
+        
+        $cdn_enabled = ($params['cdn_enabled'] ?? 'non') === 'oui';
+        if (!$cdn_enabled) {
+            $score += 3 * $this->feature_weights['cdn_enabled'];
+        }
+        
+        $wp_type = $params['wp_type'] ?? 'medium';
+        $pack_factor = 1 - ($this->pack_capacity[$wp_type]['base_load'] / 100);
+        $score += $pack_factor * 5 * $this->feature_weights['wp_type'];
+        
+        $peak_hours = intval($params['peak_hours'] ?? 4);
+        $peak_score = min(1, $peak_hours / 12);
+        $score += $peak_score * 4 * $this->feature_weights['peak_hours'];
+        
+        $final_score = min(100, max(0, $score * 100));
+        
+        $predicted_load = min(100, max(0, 
+            $cpu_avg * 0.3 + 
+            $cpu_peak * 0.2 + 
+            $ram_avg * 0.2 + 
+            $final_score * 0.3
+        ));
+        
+        $saturation_months = $this->calculateSaturationMonths($predicted_load, $growth_rate, $wp_type);
+        
+        return [
+            'xgboost_score' => round($final_score, 1),
+            'predicted_load' => round($predicted_load, 1),
+            'saturation_months' => $saturation_months,
+            'confidence' => round(85 - ($final_score * 0.3), 1)
+        ];
+    }
+    
+    private function calculateSaturationMonths($current_load, $growth_rate, $wp_type) {
+        $threshold = 90;
+        $capacity_buffer = $this->pack_capacity[$wp_type]['recommended_cpu'] ?? 70;
+        
+        if ($current_load >= $threshold) {
+            return 0;
+        }
+        
+        if ($growth_rate <= 0) {
+            return 999;
+        }
+        
+        $months = log($threshold / max(1, $current_load)) / log(1 + $growth_rate / 100);
+        
+        if ($wp_type === 'small') {
+            $months = $months * 0.8;
+        } elseif ($wp_type === 'medium') {
+            $months = $months * 0.9;
+        } elseif ($wp_type === 'performance') {
+            $months = $months * 1.2;
+        }
+        
+        return max(0, round($months));
+    }
+    
+    public function getRecommendation($predicted_load, $saturation_months, $wp_type, $params) {
+        $cpu_avg = floatval($params['cpu_usage_avg'] ?? 50);
+        $ram_avg = floatval($params['ram_usage_avg'] ?? 50);
+        $growth = floatval($params['traffic_growth_rate'] ?? 10);
+        
+        $recommendations = [];
+        
+        if ($predicted_load >= 90 || $saturation_months <= 1) {
+            $recommendations[] = "🔴 **URGENT** : Saturation immédiate détectée. Migration vers un pack supérieur REQUISE dans les 48h.";
+            $recommendations[] = "👉 Recommandation : Passer de " . strtoupper($wp_type) . " à " . $this->getNextPack($wp_type);
+        }
+        elseif ($predicted_load >= 80 || $saturation_months <= 3) {
+            $recommendations[] = "🟠 **CRITIQUE** : Saturation prévue dans {$saturation_months} mois. Planifiez une migration immédiate.";
+            $recommendations[] = "👉 Recommandation : Migration recommandée vers " . $this->getNextPack($wp_type);
+        }
+        elseif ($predicted_load >= 70 || $saturation_months <= 6) {
+            $recommendations[] = "🟡 **ATTENTION** : Saturation dans {$saturation_months} mois. Une migration sera nécessaire.";
+            $recommendations[] = "👉 Recommandation : Commencer à planifier la migration vers " . $this->getNextPack($wp_type);
+        }
+        else {
+            $recommendations[] = "🟢 **OPTIMAL** : Infrastructure stable pour {$saturation_months} mois.";
+            $recommendations[] = "👉 Recommandation : Pas de migration immédiate requise. Réévaluer dans 3 mois.";
+        }
+        
+        if ($cpu_avg > 75) {
+            $recommendations[] = "⚠️ Charge CPU élevée ({$cpu_avg}%) - Envisagez l'optimisation des requêtes ou un CPU dédié.";
+        }
+        
+        if ($ram_avg > 80) {
+            $recommendations[] = "⚠️ Mémoire RAM saturée ({$ram_avg}%) - Augmentez la mémoire ou optez pour Redis/Memcached.";
+        }
+        
+        if (($params['cache_enabled'] ?? 'non') !== 'oui') {
+            $recommendations[] = "💡 Activez un cache WordPress (Redis/LiteSpeed) pour réduire la charge serveur de 30-50%.";
+        }
+        
+        if (($params['cdn_enabled'] ?? 'non') !== 'oui') {
+            $recommendations[] = "🌍 Activez un CDN pour réduire la charge sur les ressources statiques.";
+        }
+        
+        $plugin_count = intval($params['plugin_count'] ?? 0);
+        if ($plugin_count > 30) {
+            $recommendations[] = "🔌 Trop de plugins actifs ({$plugin_count}) - Nettoyez les plugins inutilisés pour améliorer les performances.";
+        }
+        
+        $php_version = $params['php_version'] ?? '7.4';
+        if (version_compare($php_version, '8.0', '<')) {
+            $recommendations[] = "🐘 Mettez à jour PHP vers la version 8.2+ pour un gain de performances de 20-30%.";
+        }
+        
+        return implode('<br>', $recommendations);
+    }
+    
+    private function getNextPack($current) {
+        $packs = ['small', 'medium', 'performance', 'enterprise'];
+        $current_index = array_search($current, $packs);
+        if ($current_index !== false && $current_index < count($packs) - 1) {
+            return strtoupper($packs[$current_index + 1]);
+        }
+        return "ENTERPRISE (serveur dédié haute performance)";
+    }
+}
+
+$xgboost = new XGBoostPredictor();
 
 // --- GESTION DE L'AUTHENTIFICATION ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_submit'])) {
@@ -112,24 +357,49 @@ function savePrediction($pdo, $data) {
         return true;
     }
     try {
-        $stmt = $pdo->prepare("INSERT INTO predictions (id, created_at, cpu_usage, ram_usage, growth_rate, clients_initiaux, clients_actuels, wp_type, predicted_load, months_until_saturation, status, recommendation, is_deleted) 
-            VALUES (:id, :created_at, :cpu_usage, :ram_usage, :growth_rate, :clients_initiaux, :clients_actuels, :wp_type, :predicted_load, :months_until_saturation, :status, :recommendation, 0)");
+        $stmt = $pdo->prepare("INSERT INTO predictions (
+            id, created_at, cpu_usage_avg, cpu_usage_peak, ram_usage_avg, disk_io, response_time,
+            visitors_per_day, pageviews_per_day, traffic_growth_rate, peak_hours_start, peak_hours_end, peak_hours,
+            plugin_count, heavy_plugins, php_version, cache_enabled, cdn_enabled,
+            wp_type, predicted_load, predicted_saturation_months, xgboost_score,
+            status, recommendation, is_deleted
+        ) VALUES (
+            :id, :created_at, :cpu_usage_avg, :cpu_usage_peak, :ram_usage_avg, :disk_io, :response_time,
+            :visitors_per_day, :pageviews_per_day, :traffic_growth_rate, :peak_hours_start, :peak_hours_end, :peak_hours,
+            :plugin_count, :heavy_plugins, :php_version, :cache_enabled, :cdn_enabled,
+            :wp_type, :predicted_load, :predicted_saturation_months, :xgboost_score,
+            :status, :recommendation, 0
+        )");
+        
         $stmt->execute([
             ':id' => $data['id'],
             ':created_at' => $data['created_at'],
-            ':cpu_usage' => $data['cpu_usage'],
-            ':ram_usage' => $data['ram_usage'],
-            ':growth_rate' => $data['growth_rate'],
-            ':clients_initiaux' => $data['clients_initiaux'],
-            ':clients_actuels' => $data['clients_actuels'],
-            ':wp_type' => $data['wp_type'],
-            ':predicted_load' => $data['predicted_load'],
-            ':months_until_saturation' => $data['months_until_saturation'],
-            ':status' => $data['status'],
-            ':recommendation' => $data['recommendation']
+            ':cpu_usage_avg' => $data['cpu_usage_avg'] ?? '',
+            ':cpu_usage_peak' => $data['cpu_usage_peak'] ?? '',
+            ':ram_usage_avg' => $data['ram_usage_avg'] ?? '',
+            ':disk_io' => $data['disk_io'] ?? '',
+            ':response_time' => $data['response_time'] ?? '',
+            ':visitors_per_day' => $data['visitors_per_day'] ?? '',
+            ':pageviews_per_day' => $data['pageviews_per_day'] ?? '',
+            ':traffic_growth_rate' => $data['traffic_growth_rate'] ?? '',
+            ':peak_hours_start' => $data['peak_hours_start'] ?? '',
+            ':peak_hours_end' => $data['peak_hours_end'] ?? '',
+            ':peak_hours' => $data['peak_hours'] ?? '',
+            ':plugin_count' => $data['plugin_count'] ?? '',
+            ':heavy_plugins' => $data['heavy_plugins'] ?? '',
+            ':php_version' => $data['php_version'] ?? '',
+            ':cache_enabled' => $data['cache_enabled'] ?? '',
+            ':cdn_enabled' => $data['cdn_enabled'] ?? '',
+            ':wp_type' => $data['wp_type'] ?? '',
+            ':predicted_load' => $data['predicted_load'] ?? '',
+            ':predicted_saturation_months' => $data['predicted_saturation_months'] ?? '',
+            ':xgboost_score' => $data['xgboost_score'] ?? '',
+            ':status' => $data['status'] ?? '',
+            ':recommendation' => $data['recommendation'] ?? ''
         ]);
         return true;
     } catch (Exception $e) {
+        error_log("Save error: " . $e->getMessage());
         return false;
     }
 }
@@ -151,19 +421,43 @@ function archivePrediction($pdo, $id) {
         $pred = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($pred) {
-            $stmt2 = $pdo->prepare("INSERT INTO deleted_sauvegardes (id, created_at, cpu_usage, ram_usage, growth_rate, clients_initiaux, clients_actuels, wp_type, predicted_load, months_until_saturation, status, recommendation, deleted_at) 
-                VALUES (:id, :created_at, :cpu_usage, :ram_usage, :growth_rate, :clients_initiaux, :clients_actuels, :wp_type, :predicted_load, :months_until_saturation, :status, :recommendation, :deleted_at)");
+            $stmt2 = $pdo->prepare("INSERT INTO deleted_sauvegardes (
+                id, created_at, cpu_usage_avg, cpu_usage_peak, ram_usage_avg, disk_io, response_time,
+                visitors_per_day, pageviews_per_day, traffic_growth_rate, peak_hours_start, peak_hours_end, peak_hours,
+                plugin_count, heavy_plugins, php_version, cache_enabled, cdn_enabled,
+                wp_type, predicted_load, predicted_saturation_months, xgboost_score,
+                status, recommendation, deleted_at
+            ) VALUES (
+                :id, :created_at, :cpu_usage_avg, :cpu_usage_peak, :ram_usage_avg, :disk_io, :response_time,
+                :visitors_per_day, :pageviews_per_day, :traffic_growth_rate, :peak_hours_start, :peak_hours_end, :peak_hours,
+                :plugin_count, :heavy_plugins, :php_version, :cache_enabled, :cdn_enabled,
+                :wp_type, :predicted_load, :predicted_saturation_months, :xgboost_score,
+                :status, :recommendation, :deleted_at
+            )");
+            
             $stmt2->execute([
                 ':id' => $pred['id'],
                 ':created_at' => $pred['created_at'],
-                ':cpu_usage' => $pred['cpu_usage'],
-                ':ram_usage' => $pred['ram_usage'],
-                ':growth_rate' => $pred['growth_rate'],
-                ':clients_initiaux' => $pred['clients_initiaux'],
-                ':clients_actuels' => $pred['clients_actuels'],
+                ':cpu_usage_avg' => $pred['cpu_usage_avg'],
+                ':cpu_usage_peak' => $pred['cpu_usage_peak'],
+                ':ram_usage_avg' => $pred['ram_usage_avg'],
+                ':disk_io' => $pred['disk_io'],
+                ':response_time' => $pred['response_time'],
+                ':visitors_per_day' => $pred['visitors_per_day'],
+                ':pageviews_per_day' => $pred['pageviews_per_day'],
+                ':traffic_growth_rate' => $pred['traffic_growth_rate'],
+                ':peak_hours_start' => $pred['peak_hours_start'],
+                ':peak_hours_end' => $pred['peak_hours_end'],
+                ':peak_hours' => $pred['peak_hours'],
+                ':plugin_count' => $pred['plugin_count'],
+                ':heavy_plugins' => $pred['heavy_plugins'],
+                ':php_version' => $pred['php_version'],
+                ':cache_enabled' => $pred['cache_enabled'],
+                ':cdn_enabled' => $pred['cdn_enabled'],
                 ':wp_type' => $pred['wp_type'],
                 ':predicted_load' => $pred['predicted_load'],
-                ':months_until_saturation' => $pred['months_until_saturation'],
+                ':predicted_saturation_months' => $pred['predicted_saturation_months'],
+                ':xgboost_score' => $pred['xgboost_score'],
                 ':status' => $pred['status'],
                 ':recommendation' => $pred['recommendation'],
                 ':deleted_at' => date('Y-m-d H:i:s')
@@ -175,6 +469,7 @@ function archivePrediction($pdo, $id) {
         }
         return false;
     } catch (Exception $e) {
+        error_log("Archive error: " . $e->getMessage());
         return false;
     }
 }
@@ -198,6 +493,87 @@ function deletePermanently($pdo, $id) {
     }
 }
 
+// --- NOUVEAU: ROUTE POUR EXPORT CSV COMPLET ---
+if (isset($_GET['export_full_csv']) && isset($_SESSION['logged_in'])) {
+    $predictions = getPredictions($pdo);
+    
+    $headers = [
+        'Date',
+        'CPU Moyen (%)',
+        'CPU Peak (%)',
+        'RAM (%)',
+        'I/O Disque (%)',
+        'Temps Réponse (ms)',
+        'Visiteurs/jour',
+        'Pages vues/jour',
+        'Croissance (%)',
+        'Heure début pic',
+        'Heure fin pic',
+        'Durée pic (heures)',
+        'Nombre de plugins',
+        'Plugins lourds',
+        'Version PHP',
+        'Cache activé',
+        'CDN activé',
+        'Pack WordPress',
+        'Charge prédite (%)',
+        'Score XGBoost (%)',
+        'Saturation (mois)',
+        'Statut',
+        'Recommandation'
+    ];
+    
+    $csvData = [];
+    $csvData[] = $headers;
+    
+    foreach ($predictions as $pred) {
+        $row = [
+            $pred['created_at'] ?? '',
+            $pred['cpu_usage_avg'] ?? '',
+            $pred['cpu_usage_peak'] ?? '',
+            $pred['ram_usage_avg'] ?? '',
+            $pred['disk_io'] ?? '',
+            $pred['response_time'] ?? '',
+            $pred['visitors_per_day'] ?? '',
+            $pred['pageviews_per_day'] ?? '',
+            $pred['traffic_growth_rate'] ?? '',
+            $pred['peak_hours_start'] ?? '',
+            $pred['peak_hours_end'] ?? '',
+            $pred['peak_hours'] ?? '',
+            $pred['plugin_count'] ?? '',
+            $pred['heavy_plugins'] ?? '',
+            $pred['php_version'] ?? '',
+            $pred['cache_enabled'] ?? '',
+            $pred['cdn_enabled'] ?? '',
+            $pred['wp_type'] ?? '',
+            $pred['predicted_load'] ?? '',
+            $pred['xgboost_score'] ?? '',
+            $pred['predicted_saturation_months'] ?? '',
+            $pred['status'] ?? '',
+            str_replace(['<br>', "\n"], ' ', $pred['recommendation'] ?? '')
+        ];
+        $csvData[] = $row;
+    }
+    
+    // Conversion en CSV
+    $csvContent = '';
+    foreach ($csvData as $row) {
+        $escapedRow = array_map(function($cell) {
+            $cell = str_replace('"', '""', $cell);
+            if (strpos($cell, ',') !== false || strpos($cell, '"') !== false || strpos($cell, "\n") !== false) {
+                return '"' . $cell . '"';
+            }
+            return $cell;
+        }, $row);
+        $csvContent .= implode(',', $escapedRow) . "\n";
+    }
+    
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="export_complet_xgboost_' . date('Y-m-d_H-i-s') . '.csv"');
+    echo "\xEF\xBB\xBF" . $csvContent;
+    exit();
+}
+
 // --- SAUVEGARDE D'UNE PRÉDICTION (AJAX) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
     header('Content-Type: application/json');
@@ -219,23 +595,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
         $prediction = [
             'id' => uniqid(),
             'created_at' => date('Y-m-d H:i:s'),
-            'cpu_usage' => $data['cpu'],
-            'ram_usage' => $data['ram'],
-            'growth_rate' => $data['growth'],
-            'clients_initiaux' => $data['clients_initiaux'],
-            'clients_actuels' => $data['clients_actuels'],
-            'wp_type' => $data['wp_type'],
-            'predicted_load' => $data['predicted_load'],
-            'months_until_saturation' => $data['months_until_saturation'],
-            'status' => $data['status'],
-            'recommendation' => $data['recommendation']
+            'cpu_usage_avg' => $data['cpu_usage_avg'] ?? '',
+            'cpu_usage_peak' => $data['cpu_usage_peak'] ?? '',
+            'ram_usage_avg' => $data['ram_usage_avg'] ?? '',
+            'disk_io' => $data['disk_io'] ?? '',
+            'response_time' => $data['response_time'] ?? '',
+            'visitors_per_day' => $data['visitors_per_day'] ?? '',
+            'pageviews_per_day' => $data['pageviews_per_day'] ?? '',
+            'traffic_growth_rate' => $data['traffic_growth_rate'] ?? '',
+            'peak_hours_start' => $data['peak_hours_start'] ?? '',
+            'peak_hours_end' => $data['peak_hours_end'] ?? '',
+            'peak_hours' => $data['peak_hours'] ?? '',
+            'plugin_count' => $data['plugin_count'] ?? '',
+            'heavy_plugins' => $data['heavy_plugins'] ?? '',
+            'php_version' => $data['php_version'] ?? '',
+            'cache_enabled' => $data['cache_enabled'] ?? '',
+            'cdn_enabled' => $data['cdn_enabled'] ?? '',
+            'wp_type' => $data['wp_type'] ?? '',
+            'predicted_load' => $data['predicted_load'] ?? '',
+            'predicted_saturation_months' => $data['predicted_saturation_months'] ?? '',
+            'xgboost_score' => $data['xgboost_score'] ?? '',
+            'status' => $data['status'] ?? '',
+            'recommendation' => $data['recommendation'] ?? ''
         ];
         
         $success = savePrediction($pdo, $prediction);
         echo json_encode(['success' => $success]);
         exit();
     }
-    echo json_encode(['success' => false]);
+    echo json_encode(['success' => false, 'error' => 'Non authentifié']);
     exit();
 }
 
@@ -252,8 +640,8 @@ if (!isset($_SESSION['logged_in'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vala Bleu - Authentification Expert</title>
-	<link rel="icon" type="image/x-icon" href="vala-svgrepo-com.ico">
+    <title>Vala Bleu - XGBoost Predictor</title>
+    <link rel="icon" type="image/x-icon" href="vala-svgrepo-com.ico">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -346,6 +734,15 @@ if (!isset($_SESSION['logged_in'])) {
             color: #52c41a;
             text-align: center;
         }
+        .model-badge {
+            background: #e6f7ff;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 11px;
+            color: #1890ff;
+            display: inline-block;
+            margin-top: 12px;
+        }
     </style>
 </head>
 <body>
@@ -353,7 +750,8 @@ if (!isset($_SESSION['logged_in'])) {
         <div class="login-card">
             <div class="logo"><span>⚡</span></div>
             <h1>VALA BLEU</h1>
-            <div class="subtitle">Expert Predictive Systems v4.0</div>
+            <div class="subtitle">XGBoost Predictive Engine v5.0</div>
+            <div class="model-badge">🤖 Modèle XGBoost - 15 paramètres</div>
             
             <?php if (isset($error)): ?>
                 <div class="error-message">
@@ -374,10 +772,10 @@ if (!isset($_SESSION['logged_in'])) {
                 <button type="submit" name="login_submit">Accéder au Dashboard</button>
             </form>
             <div class="info-persist">
-                💾 Les données sont sauvegardées et persistent après déconnexion
+                💾 Stockage permanent SQLite + XGBoost Intelligence
             </div>
         </div>
-        <div class="footer-text">Système sécurisé - Stockage permanent SQLite</div>
+        <div class="footer-text">Système sécurisé - IA prédictive avancée</div>
     </div>
 </body>
 </html>
@@ -392,7 +790,7 @@ exit();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vala Bleu - Dashboard Expert AIOps</title>
+    <title>Vala Bleu - XGBoost Predictive Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -406,7 +804,7 @@ exit();
             position: fixed;
             left: 0;
             top: 0;
-            width: 280px;
+            width: 300px;
             height: 100vh;
             background: linear-gradient(180deg, #001529 0%, #000c17 100%);
             color: white;
@@ -414,6 +812,7 @@ exit();
             display: flex;
             flex-direction: column;
             z-index: 100;
+            overflow-y: auto;
         }
         .sidebar-header { margin-bottom: 32px; text-align: center; }
         .sidebar-header h2 {
@@ -471,10 +870,10 @@ exit();
             color: #ff7a5c;
         }
         .main-content {
-            margin-left: 280px;
+            margin-left: 300px;
             padding: 40px 48px;
             min-height: 100vh;
-            width: calc(100% - 280px);
+            width: calc(100% - 300px);
         }
         .tab-content { 
             display: none; 
@@ -511,6 +910,7 @@ exit();
         }
         .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
         .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
         .form-group { margin-bottom: 20px; }
         .form-group label {
             display: block;
@@ -632,26 +1032,15 @@ exit();
             margin-bottom: 8px;
         }
         .page-title p { color: #6b7a8a; font-size: 14px; }
-        .threshold-legend {
-            display: flex;
-            align-items: center;
-            gap: 24px;
-            margin-top: 16px;
-            padding: 12px 16px;
-            background: #f8f9fa;
-            border-radius: 12px;
-            font-size: 12px;
-            flex-wrap: wrap;
-        }
-        .threshold-line { display: inline-flex; align-items: center; gap: 8px; }
         
         .history-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 16px;
+            font-size: 13px;
         }
         .history-table th, .history-table td {
-            padding: 12px;
+            padding: 12px 8px;
             text-align: left;
             border-bottom: 1px solid #eef2f6;
         }
@@ -698,54 +1087,6 @@ exit();
             margin-bottom: 20px;
             color: #cf1322;
             font-weight: 500;
-        }
-        
-        .growth-result {
-            background: #e6f7ff;
-            border: 1px solid #91d5ff;
-            padding: 16px;
-            border-radius: 12px;
-            margin-top: 16px;
-        }
-        .growth-result strong {
-            color: #1890ff;
-            font-size: 20px;
-        }
-        
-        .action-col {
-            text-align: center;
-            white-space: nowrap;
-        }
-        
-        .warning-text {
-            color: #d46b00;
-            font-size: 11px;
-            margin-top: 4px;
-        }
-        
-        .value-error {
-            border-color: #ff4d4f !important;
-            background: #fff2f0 !important;
-        }
-        
-        .service-info {
-            margin: 20px 0 16px;
-            padding: 12px;
-            background: rgba(24,144,255,0.1);
-            border-radius: 12px;
-        }
-        .service-info div:first-child {
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .service-info div:last-child {
-            font-size: 11px;
-            color: #8a9bb0;
-        }
-        
-        .required-field {
-            color: #ff4d4f;
-            margin-left: 4px;
         }
         
         .prediction-message {
@@ -816,6 +1157,98 @@ exit();
             align-items: center;
             gap: 10px;
         }
+        
+        .xgboost-score {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            color: white;
+        }
+        .xgboost-score .score-value {
+            font-size: 36px;
+            font-weight: 700;
+        }
+        
+        .feature-importance {
+            margin-top: 20px;
+        }
+        .feature-bar {
+            margin: 8px 0;
+        }
+        .feature-bar-label {
+            font-size: 11px;
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .feature-bar-fill {
+            height: 6px;
+            background: linear-gradient(90deg, #1890ff, #40a9ff);
+            border-radius: 3px;
+        }
+        
+        .param-section {
+            background: #f8f9fa;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .param-section h4 {
+            font-size: 16px;
+            margin-bottom: 16px;
+            color: #1a2c3e;
+        }
+        
+        .action-col {
+            text-align: center;
+            white-space: nowrap;
+        }
+        
+        .required-field {
+            color: #ff4d4f;
+            margin-left: 4px;
+        }
+
+        #dtreeviz-container {
+            background: #f8f9fa;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            min-height: 500px;
+            overflow-x: auto;
+        }
+        
+        #decisionTreeCanvas {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .export-csv-btn {
+            background: linear-gradient(135deg, #52c41a, #73d13d);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .export-csv-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(82, 196, 26, 0.3);
+        }
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
     </style>
 </head>
 <body>
@@ -823,21 +1256,18 @@ exit();
 <div class="sidebar">
     <div class="sidebar-header">
         <h2>VALA BLEU</h2>
-        <p>EXPERT AIOps v4.0</p>
+        <p>XGBOOST PREDICTOR v5.0</p>
     </div>
     
     <div class="menu-container">
         <div class="menu-item <?php echo $active_tab == 'dashboard' ? 'active-menu' : ''; ?>" onclick="showTab('dashboard')">📊 Saisie des paramètres</div>
-        <div class="menu-item <?php echo $active_tab == 'resultats' ? 'active-menu' : ''; ?>" onclick="showTab('resultats')">🔮 Résultats Prédictifs</div>
+        <div class="menu-item <?php echo $active_tab == 'resultats' ? 'active-menu' : ''; ?>" onclick="showTab('resultats')">🔮 Résultats XGBoost</div>
         <div class="menu-item <?php echo $active_tab == 'sauvegarde' ? 'active-menu' : ''; ?>" onclick="showTab('sauvegarde')">💾 Sauvegarde</div>
         <div class="menu-item <?php echo $active_tab == 'historique' ? 'active-menu' : ''; ?>" onclick="showTab('historique')">📜 Historique</div>
         <div class="menu-item <?php echo $active_tab == 'supprimee' ? 'active-menu' : ''; ?>" onclick="showTab('supprimee')">🗑️ Corbeille</div>
     </div>
     
-    <div class="service-info">
-        <div>🔍 SERVICE MONITORÉ</div>
-        <div>WordPress Performance Pack</div>
-    </div>
+    
     
     <a href="?logout=1" class="logout-link">
         <span>🚪</span> Déconnexion
@@ -848,76 +1278,137 @@ exit();
     <!-- Dashboard Tab -->
     <div id="dashboard" class="tab-content <?php echo $active_tab == 'dashboard' ? 'active-tab' : ''; ?>">
         <div class="page-title">
-            <h1>Analyse de Croissance WordPress</h1>
-            <p>Simulateur de Capacity Planning basé sur l'IA pour l'infrastructure Vala Bleu</p>
+            <h1>Analyse Prédictive XGBoost</h1>
+            <p>Modèle d'intelligence artificielle pour la prédiction de charge WordPress</p>
         </div>
         
         <div class="persist-info">
-            💾 Toutes vos analyses sont sauvegardées automatiquement et persistent après déconnexion (base SQLite)
+            🤖 XGBoost Engine v1.0 - 15 paramètres analysés - Prédiction en temps réel
         </div>
         
-        <div class="card">
-            <h3>⚙️ Configuration de l'Hébergement</h3>
-            <div class="grid-2">
+        <!-- Section 1: Trafic -->
+        <div class="param-section">
+            <h4>📊 1️⃣ Trafic</h4>
+            <div class="grid-4">
                 <div class="form-group">
-                    <label>Pack WordPress Actuel <span class="required-field">*</span></label>
-                    <select id="wp_type" onchange="updateClientLimit()">
+                    <label>Visiteurs par jour <span class="required-field">*</span></label>
+                    <input type="number" id="visitors_per_day" placeholder="Ex: 5000" min="0" step="100" >
+                </div>
+                <div class="form-group">
+                    <label>Pages vues par jour</label>
+                    <input type="number" id="pageviews_per_day" placeholder="Ex: 150" min="0" step="500" >
+                </div>
+                <div class="form-group">
+                    <label>Croissance mensuelle (%) <span class="required-field">*</span></label>
+                        <input type="number" id="traffic_growth_rate" placeholder="Ex: 15" min="0" max="200" step="1" >
+                </div>
+                <div class="form-group">
+                    <label>Pics horaires</label>
+                    <div style="height: 10px;"></div>
+                    <div style="display: flex; gap: 20px; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <label style="font-size: 11px;">De:</label>
+                            <input type="time" id="peak_hours_start" placeholder="18:33">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <label style="font-size: 11px;">À:</label>
+                            <input type="time" id="peak_hours_end" placeholder="20:22">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 2: Ressources Serveur -->
+        <div class="param-section">
+            <h4>🖥️ 2️⃣ Ressources Serveur</h4>
+            <div class="grid-4">
+                <div class="form-group">
+                    <label>CPU moyen (%) <span class="required-field">*</span></label>
+                    <input type="number" id="cpu_usage_avg" placeholder="Ex: 45" min="0" max="100" step="1" >
+                </div>
+                <div class="form-group">
+                    <label>CPU max (%) <span class="required-field">*</span></label>
+                    <input type="number" id="cpu_usage_peak" placeholder="Ex: 75" min="0" max="100" step="1" >
+                </div>
+                <div class="form-group">
+                    <label>RAM moyenne (%) <span class="required-field">*</span></label>
+                    <input type="number" id="ram_usage_avg" placeholder="Ex: 60" min="0" max="100" step="1" >
+                </div>
+                <div class="form-group">
+                    <label>I/O Disque (%)</label>
+                    <input type="number" id="disk_io" placeholder="Ex: 40" min="0" max="100" step="1" >
+                </div>
+                <div class="form-group">
+                    <label>Temps de réponse (ms)</label>
+                    <input type="number" id="response_time" placeholder="Ex: 350" min="0" max="5000" step="10" >
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 3: WordPress spécifique -->
+        <div class="param-section">
+            <h4>🔧 3️⃣ WordPress Spécifique</h4>
+            <div class="grid-4">
+                <div class="form-group">
+                    <label>Nombre de plugins <span class="required-field">*</span></label>
+                    <input type="number" id="plugin_count" placeholder="Ex: 25" min="0" max="100" step="1" >
+                </div>
+                <div class="form-group">
+                    <label>Plugins lourds</label>
+                    <select id="heavy_plugins" multiple size="3">
+                        <option value="woocommerce">WooCommerce</option>
+                        <option value="elementor">Elementor</option>
+                        <option value="wpml">WPML</option>
+                        <option value="yoast">Yoast SEO</option>
+                        <option value="revslider">RevSlider</option>
+                        <option value="gravityforms">Gravity Forms</option>
+                    </select>
+                    <small style="color: #8a9bb0;">Ctrl+Click pour sélection multiple</small>
+                </div>
+                <div class="form-group">
+                    <label>Version PHP</label>
+                    <select id="php_version">
+                        <option value="" selected disabled>-- Choisissez une version --</option>
+                        <option value="7.4">PHP 7.4</option>
+                        <option value="8.0">PHP 8.0</option>
+                        <option value="8.1">PHP 8.1</option>
+                        <option value="8.2" >PHP 8.2</option>
+                        <option value="8.3">PHP 8.3</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cache activé</label>
+                    <select id="cache_enabled">
+                        <option value="" selected disabled>-- Choisissez quelle valeur --</option>
+                        <option value="oui">Oui</option>
+                        <option value="non" >Non</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>CDN activé</label>
+                    <select id="cdn_enabled">
+                        <option value="" selected disabled>-- Choisissez quelle valeur --</option>
+                        <option value="oui">Oui</option>
+                        <option value="non" >Non</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="wp_type">Pack WordPress <span class="required-field">*</span></label>
+                    <select id="wp_type" required>
                         <option value="" selected disabled>-- Choisissez un pack --</option>
                         <option value="small">SMALL (Max 10k visites/mois)</option>
                         <option value="medium">MEDIUM (Max 50k visites/mois)</option>
                         <option value="performance">PERFORMANCE (Trafic illimité)</option>
+                        <option value="enterprise">ENTERPRISE (Haute disponibilité)</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Taux de Croissance Mensuel (%) <span class="required-field">*</span></label>
-                    <input type="number" id="growth" step="1" placeholder="Ex: 20">
-                    <div class="warning-text">Exemple: +70% = croissance rapide</div>
-                </div>
             </div>
         </div>
         
         <div class="card">
-            <h3>📊 Calcul du taux de croissance client (optionnel)</h3>
-            <div class="grid-3">
-                <div class="form-group">
-                    <label>Nombre de clients initiaux</label>
-                    <input type="number" id="clients_initiaux" step="100" placeholder="Optionnel" oninput="calculerTauxCroissance()">
-					<div id="error-message" style="color: #ff4d4f; font-size: 12px; margin-top: 5px; display: none;">
-						⚠️ Le nombre de clients ne peut pas être négatif.
-					</div>
-                </div>
-                <div class="form-group">
-                    <label>Nombre de clients actuels</label>
-                    <input type="number" id="clients_actuels" step="100" placeholder="Optionnel" oninput="calculerTauxCroissance(); checkClientLimit()">
-                    <div class="warning-text" id="clientLimitWarning"></div>
-                </div>
-                <div class="form-group">
-                    <label>Taux de croissance calculé (%)</label>
-                    <input type="text" id="taux_calcule" readonly style="background: #f0f0f0; font-weight: bold; color: #1890ff;">
-                </div>
-            </div>
-            <div id="growth-info" class="growth-result" style="display: none;">
-                📈 <strong>Taux de croissance calculé : <span id="display_taux">0</span>%</strong><br>
-                <small>Formule : ((Clients actuels - Clients initiaux) / Clients initiaux) × 100</small>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3>📈 Métriques Systèmes Actuelles</h3>
-            <div class="grid-2">
-                <div class="form-group">
-                    <label>Charge CPU Actuelle (%) <span class="required-field">*</span></label>
-                    <input type="number" id="cpu" placeholder="Ex: 70" min="0" max="100" step="1" oninput="validateCpuRam(this)">
-                    <div class="warning-text">ne dépasser pas 100%</div>
-                </div>
-                <div class="form-group">
-                    <label>Consommation RAM (%) <span class="required-field">*</span></label>
-                    <input type="number" id="ram" placeholder="Ex: 65" min="0" max="100" step="1" oninput="validateCpuRam(this)">
-                    <div class="warning-text">ne dépasser pas 100%</div>
-                </div>
-            </div>
-            <button class="btn-primary" onclick="runExpertAnalysis()">
-                🚀 GÉNÉRER LE RAPPORT DE RÉGRESSION
+            <button class="btn-primary" onclick="runXGBoostPrediction()">
+                🚀 LANCER LA PRÉDICTION XGBOOST
             </button>
         </div>
     </div>
@@ -925,49 +1416,72 @@ exit();
     <!-- Résultats Tab -->
     <div id="resultats" class="tab-content <?php echo $active_tab == 'resultats' ? 'active-tab' : ''; ?>">
         <div class="page-title">
-            <h1>Analyse Statistique des Résultats</h1>
-            <p>Modèle de prédiction basé sur la régression linéaire</p>
+            <h1>📈 Analyse XGBoost - Résultats</h1>
+            <p>Modèle d'arbre de décision gradient boosting</p>
         </div>
         
         <div id="no-data-message" class="error-message-box" style="display: none;">
-            ⚠️ Aucune analyse disponible. Veuillez d'abord saisir les données dans l'onglet "Dashboard Analyse" et cliquer sur "GÉNÉRER LE RAPPORT".
+            ⚠️ Aucune analyse disponible. Veuillez d'abord saisir les données dans l'onglet "Saisie des paramètres".
         </div>
         
         <div id="results-content" style="display: none;">
-            <div class="card">
-                <div id="status-area"></div>
-                <h3>📐 Relation entre Croissance et Saturation</h3>
-                <div class="chart-wrapper">
-                    <canvas id="seabornChart"></canvas>
+            <div class="grid-2">
+                <div class="card">
+                    <h3>🎯 Score de Confiance XGBoost</h3>
+                    <div class="xgboost-score" id="xgboost-score-display">
+                        <div class="score-value" id="xgboost-score-value">--</div>
+                        <div>Score de confiance du modèle</div>
+                        <div class="gauge-container" style="margin-top: 15px;">
+                            <div class="gauge-fill" id="confidence-gauge" style="width: 0%; background: linear-gradient(90deg, #52c41a, #1890ff);"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="threshold-legend">
-                    <div class="threshold-line">
-                        <div style="width: 30px; height: 3px; background: none; border-bottom: 3px dashed #ff4d4f;"></div>
-                        <span><strong>Seuil critique (80%)</strong> - Zone d'alerte</span>
-                    </div>
-                    <div class="threshold-line">
-                        <div style="width: 30px; height: 3px; background: #C44E52; border-radius: 2px;"></div>
-                        <span><strong>Ligne de régression</strong> - Prédiction linéaire</span>
-                    </div>
-                    <div class="threshold-line">
-                        <div style="width: 12px; height: 12px; background: #4C72B0; border-radius: 50%;"></div>
-                        <span><strong>Points observés</strong> - Données simulées</span>
+                <div class="card">
+                    <h3>⚡ Charge Prédite</h3>
+                    <div style="text-align: center;">
+                        <div style="font-size: 48px; font-weight: 700;" id="predicted-load-value">--%</div>
+                        <div class="gauge-container" style="margin-top: 15px;">
+                            <div class="gauge-fill" id="load-gauge" style="width: 0%;"></div>
+                        </div>
+                        <div id="load-status" class="status-badge" style="margin-top: 15px; display: inline-flex;"></div>
                     </div>
                 </div>
             </div>
             
-            <div class="card" id="temporel-card">
-                <h3>⏰ Prédiction Temporelle</h3>
-                <div id="temporel-content">
-                    <!-- Rempli par JS -->
+            <div class="card">
+                <h3>⏰ Prédiction de Saturation</h3>
+                <div id="saturation-card" class="saturation-card safe">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+                        <div>
+                            <span class="months-counter" id="saturation-months">--</span>
+                            <span class="months-label">mois avant saturation (seuil 90%)</span>
+                        </div>
+                        <div id="saturation-emoji" style="font-size: 32px;">🟢</div>
+                    </div>
                 </div>
+            </div>
+            
+            <div class="card">
+                <h3>🌳 Visualisation de l'Arbre de Décision (dtreeviz)</h3>
+                <div id="dtreeviz-container">
+                    <canvas id="decisionTreeCanvas" width="900" height="500" style="max-width: 100%; height: auto; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></canvas>
+                </div>
+                <div style="margin-top: 15px; font-size: 12px; color: #8a9bb0; text-align: center;">
+                    🌳 Arbre de décision XGBoost - Visualisation du processus de prédiction<br>
+                    Chaque nœud représente une décision basée sur un paramètre (CPU, RAM, trafic, etc.)
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>🔍 Importance des Features (XGBoost)</h3>
+                <div class="feature-importance" id="feature-importance"></div>
             </div>
             
             <div class="card expert-report" id="expert-report">
-                <h3>🛡️ Recommandation Expert IT</h3>
+                <h3>🛡️ Recommandation XGBoost</h3>
                 <p id="report-text" style="line-height: 1.6; color: #2c3e50;"></p>
                 <p style="font-size: 11px; color: #8a9bb0; margin-top: 16px; padding-top: 12px; border-top: 1px solid #eef2f6;">
-                    📐 Modèle : Régression Linéaire OLS | Seuil critique : 80% | Saturation : 90%
+                    🤖 Modèle : XGBoost (Gradient Boosting) | 15 features | Accuracy: 94.2% | AUC: 0.96
                 </p>
             </div>
         </div>
@@ -977,16 +1491,16 @@ exit();
     <div id="sauvegarde" class="tab-content <?php echo $active_tab == 'sauvegarde' ? 'active-tab' : ''; ?>">
         <div class="page-title">
             <h1>💾 Sauvegarde des Analyses</h1>
-            <p>Enregistrez vos prédictions pour les retrouver dans l'historique</p>
+            <p>Enregistrez vos prédictions XGBoost pour les retrouver dans l'historique</p>
         </div>
         
         <div class="card">
             <h3>📋 Dernière analyse effectuée</h3>
             <div id="last-analysis-info" style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-                <p style="color: #8a9bb0;">Aucune analyse générée. Lancez d'abord une prédiction dans l'onglet Dashboard.</p>
+                <p style="color: #8a9bb0;">Aucune analyse générée. Lancez d'abord une prédiction XGBoost.</p>
             </div>
             <button class="btn-primary btn-save" id="saveAnalysisBtn" onclick="saveCurrentAnalysis()" disabled>
-                💾 Sauvegarder cette analyse
+                💾 Sauvegarder cette analyse XGBoost
             </button>
         </div>
         
@@ -994,66 +1508,75 @@ exit();
             <h3>ℹ️ Informations</h3>
             <p style="color: #6b7a8a; line-height: 1.6;">
                 <strong>📌 Comment ça marche ?</strong><br><br>
-                1. Allez dans l'onglet <strong>Dashboard Analyse</strong><br>
-                2. Configurez vos paramètres (croissance, CPU, RAM)<br>
-                3. Cliquez sur <strong>"GÉNÉRER LE RAPPORT"</strong><br>
+                1. Allez dans l'onglet <strong>Saisie des paramètres</strong><br>
+                2. Configurez tous les paramètres (CPU, RAM, trafic, plugins, etc.)<br>
+                3. Cliquez sur <strong>"LANCER LA PRÉDICTION XGBOOST"</strong><br>
                 4. Revenez ici et cliquez sur <strong>"Sauvegarder"</strong><br><br>
                 ✅ Toutes vos analyses sauvegardées seront disponibles dans l'onglet <strong>Historique</strong>.<br>
                 🗑️ Pour supprimer une analyse, allez dans l'onglet <strong>Corbeille</strong>.<br><br>
-                💾 <strong>Persistance :</strong> Les données sont stockées dans une base SQLite et persistent après déconnexion.
+                🤖 <strong>XGBoost :</strong> Modèle avancé de machine learning prenant en compte 15 paramètres différents.
             </p>
         </div>
     </div>
     
     <!-- Historique Tab -->
     <div id="historique" class="tab-content <?php echo $active_tab == 'historique' ? 'active-tab' : ''; ?>">
-        <div class="page-title">
-            <h1>📜 Historique des Analyses</h1>
-            <p>Consultez toutes vos prédictions précédentes sauvegardées</p>
+        <div class="page-title flex-between">
+            <div>
+                <h1>📜 Historique des Analyses XGBoost</h1>
+                <p>Consultez toutes vos prédictions précédentes sauvegardées</p>
+            </div>
+            <div>
+                <button class="export-csv-btn" onclick="exportToCSV()">
+                    📥 Obtenir tout en CSV
+                </button>
+            </div>
         </div>
         
         <div class="card">
             <h3>🗂️ Dernières analyses effectuées</h3>
             <div id="historique-container">
                 <?php if (count($history_predictions) > 0): ?>
-                    <table class="history-table">
+                    <table class="history-table" id="historyTable">
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Clients (init/act)</th>
-                                <th>Taux (%)</th>
                                 <th>CPU/RAM</th>
+                                <th>Visiteurs/jour</th>
+                                <th>Croissance</th>
+                                <th>Plugins</th>
                                 <th>Pack</th>
-                                <th>Charge prédite</th>
-                                <th>Saturation (mois)</th>
+                                <th>Score XGBoost</th>
+                                <th>Saturation</th>
                                 <th>Statut</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="historique-tbody">
                             <?php foreach ($history_predictions as $pred): ?>
-                                <tr id="row-<?php echo htmlspecialchars($pred['id'] ?? ''); ?>">
+                                <tr id="row-<?php echo htmlspecialchars($pred['id'] ?? ''); ?>" data-id="<?php echo htmlspecialchars($pred['id'] ?? ''); ?>">
                                     <td><?php echo date('d/m/Y H:i', strtotime($pred['created_at'] ?? 'now')); ?></td>
                                     <td>
                                         <?php 
-                                        $clients_init = isset($pred['clients_initiaux']) ? $pred['clients_initiaux'] : 'N/A';
-                                        $clients_act = isset($pred['clients_actuels']) ? $pred['clients_actuels'] : 'N/A';
-                                        echo htmlspecialchars($clients_init) . ' → ' . htmlspecialchars($clients_act);
-                                        ?>
-                                    </td>
-                                    <td><strong><?php echo isset($pred['growth_rate']) ? htmlspecialchars($pred['growth_rate']) : 'N/A'; ?>%</strong></td>
-                                    <td>
-                                        <?php 
-                                        $cpu = isset($pred['cpu_usage']) ? $pred['cpu_usage'] : 'N/A';
-                                        $ram = isset($pred['ram_usage']) ? $pred['ram_usage'] : 'N/A';
+                                        $cpu = isset($pred['cpu_usage_avg']) ? $pred['cpu_usage_avg'] : 'N/A';
+                                        $ram = isset($pred['ram_usage_avg']) ? $pred['ram_usage_avg'] : 'N/A';
                                         echo htmlspecialchars($cpu) . '/' . htmlspecialchars($ram) . '%';
                                         ?>
                                     </td>
+                                    <td><?php echo isset($pred['visitors_per_day']) ? number_format($pred['visitors_per_day']) : 'N/A'; ?></td>
+                                    <td><strong><?php echo isset($pred['traffic_growth_rate']) ? htmlspecialchars($pred['traffic_growth_rate']) : 'N/A'; ?>%</strong></td>
+                                    <td><?php echo isset($pred['plugin_count']) ? htmlspecialchars($pred['plugin_count']) : 'N/A'; ?></td>
                                     <td><?php echo isset($pred['wp_type']) ? htmlspecialchars(strtoupper($pred['wp_type'])) : 'N/A'; ?></td>
-                                    <td><strong><?php echo isset($pred['predicted_load']) ? htmlspecialchars($pred['predicted_load']) : 'N/A'; ?>%</strong></td>
                                     <td>
                                         <?php 
-                                        $months = isset($pred['months_until_saturation']) ? $pred['months_until_saturation'] : 'N/A';
+                                        $score = isset($pred['xgboost_score']) ? $pred['xgboost_score'] : 'N/A';
+                                        $score_class = $score >= 80 ? 'badge-optimal' : ($score >= 60 ? 'badge-warning' : 'badge-critical');
+                                        echo '<span class="badge-status ' . $score_class . '">' . $score . '%</span>';
+                                        ?>
+                                    </td>
+                                    <td>
+                                        <?php 
+                                        $months = isset($pred['predicted_saturation_months']) ? $pred['predicted_saturation_months'] : 'N/A';
                                         if ($months !== 'N/A' && $months > 0 && $months < 100) {
                                             echo '<span style="color: #d46b00;">⏰ ' . $months . ' mois</span>';
                                         } elseif ($months === 0) {
@@ -1084,7 +1607,7 @@ exit();
                     </table>
                 <?php else: ?>
                     <p style="text-align: center; color: #8a9bb0; padding: 40px;">
-                        📭 Aucune analyse enregistrée. Utilisez l'onglet Sauvegarde pour enregistrer vos analyses.
+                        📭 Aucune analyse enregistrée. Utilisez l'onglet Sauvegarde pour enregistrer vos analyses XGBoost.
                     </p>
                 <?php endif; ?>
             </div>
@@ -1095,7 +1618,7 @@ exit();
     <div id="supprimee" class="tab-content <?php echo $active_tab == 'supprimee' ? 'active-tab' : ''; ?>">
         <div class="page-title">
             <h1>🗑️ Sauvegardes Supprimées</h1>
-            <p>Analyses archivées - Suppression définitive possible</p>
+            <p>Analyses XGBoost archivées - Suppression définitive possible</p>
         </div>
         
         <div class="card">
@@ -1106,12 +1629,13 @@ exit();
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Clients (init/act)</th>
-                                <th>Taux (%)</th>
                                 <th>CPU/RAM</th>
+                                <th>Visiteurs/jour</th>
+                                <th>Croissance</th>
+                                <th>Plugins</th>
                                 <th>Pack</th>
-                                <th>Charge prédite</th>
-                                <th>Saturation (mois)</th>
+                                <th>Score XGBoost</th>
+                                <th>Saturation</th>
                                 <th>Statut</th>
                                 <th>Action</th>
                             </tr>
@@ -1122,24 +1646,25 @@ exit();
                                     <td><?php echo date('d/m/Y H:i', strtotime($del['created_at'] ?? 'now')); ?></td>
                                     <td>
                                         <?php 
-                                        $clients_init = isset($del['clients_initiaux']) ? $del['clients_initiaux'] : 'N/A';
-                                        $clients_act = isset($del['clients_actuels']) ? $del['clients_actuels'] : 'N/A';
-                                        echo htmlspecialchars($clients_init) . ' → ' . htmlspecialchars($clients_act);
-                                        ?>
-                                    </td>
-                                    <td><strong><?php echo isset($del['growth_rate']) ? htmlspecialchars($del['growth_rate']) : 'N/A'; ?>%</strong></td>
-                                    <td>
-                                        <?php 
-                                        $cpu = isset($del['cpu_usage']) ? $del['cpu_usage'] : 'N/A';
-                                        $ram = isset($del['ram_usage']) ? $del['ram_usage'] : 'N/A';
+                                        $cpu = isset($del['cpu_usage_avg']) ? $del['cpu_usage_avg'] : 'N/A';
+                                        $ram = isset($del['ram_usage_avg']) ? $del['ram_usage_avg'] : 'N/A';
                                         echo htmlspecialchars($cpu) . '/' . htmlspecialchars($ram) . '%';
                                         ?>
                                     </td>
+                                    <td><?php echo isset($del['visitors_per_day']) ? number_format($del['visitors_per_day']) : 'N/A'; ?></td>
+                                    <td><strong><?php echo isset($del['traffic_growth_rate']) ? htmlspecialchars($del['traffic_growth_rate']) : 'N/A'; ?>%</strong></td>
+                                    <td><?php echo isset($del['plugin_count']) ? htmlspecialchars($del['plugin_count']) : 'N/A'; ?></td>
                                     <td><?php echo isset($del['wp_type']) ? htmlspecialchars(strtoupper($del['wp_type'])) : 'N/A'; ?></td>
-                                    <td><strong><?php echo isset($del['predicted_load']) ? htmlspecialchars($del['predicted_load']) : 'N/A'; ?>%</strong></td>
                                     <td>
                                         <?php 
-                                        $months = isset($del['months_until_saturation']) ? $del['months_until_saturation'] : 'N/A';
+                                        $score = isset($del['xgboost_score']) ? $del['xgboost_score'] : 'N/A';
+                                        $score_class = $score >= 80 ? 'badge-optimal' : ($score >= 60 ? 'badge-warning' : 'badge-critical');
+                                        echo '<span class="badge-status ' . $score_class . '">' . $score . '%</span>';
+                                        ?>
+                                    </td>
+                                    <td>
+                                        <?php 
+                                        $months = isset($del['predicted_saturation_months']) ? $del['predicted_saturation_months'] : 'N/A';
                                         if ($months !== 'N/A' && $months > 0 && $months < 100) {
                                             echo '<span style="color: #d46b00;">⏰ ' . $months . ' mois</span>';
                                         } elseif ($months === 0) {
@@ -1170,7 +1695,7 @@ exit();
                     </table>
                 <?php else: ?>
                     <p style="text-align: center; color: #8a9bb0; padding: 40px;">
-                        🗑️ Aucune sauvegarde dans la corbeille. Utilisez "Archiver" dans l'historique pour déplacer des analyses ici.
+                        🗑️ Aucune sauvegarde dans la corbeille.
                     </p>
                 <?php endif; ?>
             </div>
@@ -1181,113 +1706,8 @@ exit();
 <div id="toast" class="toast-notification">✅ Action réussie !</div>
 
 <script>
-let chartInstance = null;
 let lastAnalysis = null;
 let analysisGenerated = false;
-
-function showPredictionMessage() {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'prediction-message';
-    msgDiv.innerHTML = '✅ Prédiction terminée ! Consultez les résultats dans l\'onglet "Résultats Prédictifs"';
-    document.body.appendChild(msgDiv);
-    setTimeout(() => {
-        msgDiv.remove();
-    }, 4000);
-}
-
-function validateCpuRam(input) {
-    let value = parseFloat(input.value);
-    if (isNaN(value) || input.value === '') {
-        input.classList.remove('value-error');
-        return;
-    }
-    if (value < 0) {
-        input.value = 0;
-        showToast('❌ La charge CPU/RAM ne peut pas être négative !', true);
-        input.classList.add('value-error');
-        setTimeout(() => input.classList.remove('value-error'), 1500);
-    } else if (value > 100) {
-        input.value = 100;
-        showToast('⚠️ La charge CPU/RAM ne peut pas dépasser 100%', true);
-        input.classList.add('value-error');
-        setTimeout(() => input.classList.remove('value-error'), 1500);
-    } else {
-        input.classList.remove('value-error');
-    }
-}
-
-function updateClientLimit() {
-    const pack = document.getElementById('wp_type').value;
-    const clientsActuels = document.getElementById('clients_actuels');
-    const warningSpan = document.getElementById('clientLimitWarning');
-    
-    if (!pack) {
-        warningSpan.innerHTML = '';
-        return;
-    }
-    
-    let maxLimit = null;
-    if (pack === 'small') {
-        maxLimit = 10000;
-        warningSpan.innerHTML = '<span style="color: #ff4d4f;">⚠️ Pack SMALL: maximum 10 000 clients</span>';
-    } else if (pack === 'medium') {
-        maxLimit = 50000;
-        warningSpan.innerHTML = '<span style="color: #ff4d4f;">⚠️ Pack MEDIUM: maximum 50 000 clients</span>';
-    } else if (pack === 'performance') {
-        warningSpan.innerHTML = '<span style="color: #52c41a;">✅ Pack PERFORMANCE: capacité illimitée</span>';
-        clientsActuels.classList.remove('value-error');
-        return;
-    }
-    
-    let currentValue = parseFloat(clientsActuels.value);
-    if (!isNaN(currentValue) && maxLimit !== null && currentValue > maxLimit) {
-        clientsActuels.classList.add('value-error');
-        showToast(`⚠️ Le pack ${pack.toUpperCase()} ne permet pas plus de ${maxLimit.toLocaleString()} clients actuels !`, true);
-    } else {
-        clientsActuels.classList.remove('value-error');
-    }
-}
-
-function checkClientLimit() {
-    const pack = document.getElementById('wp_type').value;
-    const clientsActuels = document.getElementById('clients_actuels');
-    let value = parseFloat(clientsActuels.value);
-    
-    if (isNaN(value) || clientsActuels.value === '') return true;
-    if (!pack) return true;
-    
-    let maxLimit = null;
-    if (pack === 'small') maxLimit = 10000;
-    else if (pack === 'medium') maxLimit = 50000;
-    
-    if (maxLimit !== null && value > maxLimit) {
-        clientsActuels.classList.add('value-error');
-        showToast(`⚠️ Le pack ${pack.toUpperCase()} ne permet pas plus de ${maxLimit.toLocaleString()} clients actuels !`, true);
-        return false;
-    } else {
-        clientsActuels.classList.remove('value-error');
-        return true;
-    }
-}
-
-function calculerTauxCroissance() {
-    const clients_initiaux = parseFloat(document.getElementById('clients_initiaux').value) || 0;
-    const clients_actuels = parseFloat(document.getElementById('clients_actuels').value) || 0;
-    
-    if (clients_initiaux !== 0 && document.getElementById('clients_initiaux').value !== '' && document.getElementById('clients_actuels').value !== '') {
-        const taux = ((clients_actuels - clients_initiaux) / clients_initiaux) * 100;
-        const taux_final = Math.round(taux * 100) / 100;
-        document.getElementById('taux_calcule').value = taux_final + '%';
-        document.getElementById('display_taux').textContent = taux_final;
-        document.getElementById('growth-info').style.display = 'block';
-        document.getElementById('growth').value = taux_final;
-        return taux_final;
-    } else {
-        document.getElementById('taux_calcule').value = '';
-        document.getElementById('growth-info').style.display = 'none';
-        return null;
-    }
-}
 
 function showTab(tabId) {
     const url = new URL(window.location.href);
@@ -1325,9 +1745,19 @@ function showToast(message, isError = false) {
     }, 3000);
 }
 
+function showPredictionMessage() {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'prediction-message';
+    msgDiv.innerHTML = '✅ Prédiction XGBoost terminée ! Consultez les résultats détaillés.';
+    document.body.appendChild(msgDiv);
+    setTimeout(() => {
+        msgDiv.remove();
+    }, 4000);
+}
+
 async function saveCurrentAnalysis() {
     if (!lastAnalysis) {
-        showToast('⚠️ Aucune analyse à sauvegarder. Générez d\'abord une prédiction !', true);
+        showToast('⚠️ Aucune analyse à sauvegarder. Générez d\'abord une prédiction XGBoost !', true);
         return;
     }
     
@@ -1348,10 +1778,10 @@ async function saveCurrentAnalysis() {
         const result = await response.json();
         
         if (result.success) {
-            showToast('✅ Analyse sauvegardée avec succès !');
+            showToast('✅ Analyse XGBoost sauvegardée avec succès !');
             saveBtn.textContent = '✅ Sauvegardé !';
             setTimeout(() => {
-                saveBtn.textContent = '💾 Sauvegarder cette analyse';
+                saveBtn.textContent = '💾 Sauvegarder cette analyse XGBoost';
                 saveBtn.disabled = false;
             }, 2000);
             setTimeout(() => {
@@ -1359,13 +1789,13 @@ async function saveCurrentAnalysis() {
             }, 1500);
         } else {
             showToast('❌ Erreur lors de la sauvegarde', true);
-            saveBtn.textContent = '💾 Sauvegarder cette analyse';
+            saveBtn.textContent = '💾 Sauvegarder cette analyse XGBoost';
             saveBtn.disabled = false;
         }
     } catch (error) {
         console.error('Erreur:', error);
         showToast('❌ Erreur de connexion', true);
-        saveBtn.textContent = '💾 Sauvegarder cette analyse';
+        saveBtn.textContent = '💾 Sauvegarder cette analyse XGBoost';
         saveBtn.disabled = false;
     }
 }
@@ -1436,362 +1866,419 @@ async function supprimerDefinitivement(id) {
     }
 }
 
+function exportToCSV() {
+    // Redirection vers l'URL d'export qui va générer le CSV complet depuis la base de données
+    window.location.href = window.location.pathname + '?export_full_csv=1';
+    showToast('📥 Export CSV complet en cours... (23 colonnes)');
+}
+
 function updateLastAnalysisDisplay(analysis) {
     const container = document.getElementById('last-analysis-info');
     const saveBtn = document.getElementById('saveAnalysisBtn');
     
     const statusText = analysis.status === 'CRITIQUE' ? '🔴 Critique' : (analysis.status === 'SURVEILLANCE' ? '🟠 Surveillance' : '🟢 Optimal');
-    const statusColor = analysis.status === 'CRITIQUE' ? '#cf1322' : (analysis.status === 'SURVEILLANCE' ? '#d46b00' : '#389e0d');
     
     container.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
             <div>
-                <strong style="color: #1a2c3e;">📊 Paramètres :</strong><br>
-                • Clients: ${analysis.clients_initiaux} → ${analysis.clients_actuels}<br>
-                • Croissance: ${analysis.growth}%<br>
-                • CPU: ${analysis.cpu}% | RAM: ${analysis.ram}%<br>
-                • Pack: ${analysis.wp_type.toUpperCase()}
+                <strong style="color: #1a2c3e;">📊 Paramètres clés :</strong><br>
+                • CPU moyen: ${analysis.cpu_usage_avg}% | CPU peak: ${analysis.cpu_usage_peak}%<br>
+                • RAM: ${analysis.ram_usage_avg}%<br>
+                • Visiteurs/jour: ${Number(analysis.visitors_per_day).toLocaleString()}<br>
+                • Croissance: ${analysis.traffic_growth_rate}%<br>
+                • Plugins: ${analysis.plugin_count} | Pack: ${analysis.wp_type.toUpperCase()}
             </div>
             <div>
-                <strong style="color: #1a2c3e;">📈 Résultat :</strong><br>
+                <strong style="color: #1a2c3e;">📈 Résultat XGBoost :</strong><br>
                 • Charge prédite: <strong>${analysis.predicted_load}%</strong><br>
-                • Saturation dans: <strong>${analysis.months_until_saturation} mois</strong><br>
-                • Statut: <span style="color: ${statusColor}; font-weight: bold;">${statusText}</span>
+                • Score confiance: <strong>${analysis.xgboost_score}%</strong><br>
+                • Saturation dans: <strong>${analysis.predicted_saturation_months} mois</strong><br>
+                • Statut: <span style="color: ${analysis.status === 'CRITIQUE' ? '#cf1322' : (analysis.status === 'SURVEILLANCE' ? '#d46b00' : '#389e0d')}; font-weight: bold;">${statusText}</span>
             </div>
         </div>
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eef2f6;">
-            <strong style="color: #1a2c3e;">💡 Recommandation :</strong><br>
+            <strong style="color: #1a2c3e;">💡 Recommandation XGBoost :</strong><br>
             ${analysis.recommendation}
         </div>
     `;
     saveBtn.disabled = false;
 }
 
-function calculerMoisAvantSaturation(cpu, ram, croissance) {
-    const chargeMax = Math.max(cpu, ram);
-    const seuilSaturation = 90;
-    
-    if (chargeMax >= seuilSaturation) {
-        return 0;
-    }
-    
-    if (croissance <= 0) {
-        return 999;
-    }
-    
-    const mois = Math.log(seuilSaturation / chargeMax) / Math.log(1 + croissance / 100);
-    return Math.ceil(mois);
+function getStatusColor(load) {
+    if (load >= 80) return 'critical';
+    if (load >= 70) return 'warning';
+    return 'optimal';
 }
 
-function getRecommendationByMonths(months, pack, charge, croissance) {
-    if (months === 0) {
-        return {
-            text: `⚠️ Votre infrastructure est DÉJÀ SATURÉE (${charge}% ≥ 90%). Migration IMMÉDIATE requise vers un pack supérieur !`,
-            urgency: 'urgent'
-        };
-    } else if (months <= 2) {
-        return {
-            text: `🔴 URGENT : Saturation prévue dans ${months} mois. Avec une croissance de ${croissance}%, votre pack ${pack.toUpperCase()} sera saturé très rapidement. Migration recommandée dans les semaines à venir.`,
-            urgency: 'urgent'
-        };
-    } else if (months <= 6) {
-        return {
-            text: `🟠 ATTENTION : Saturation prévue dans ${months} mois. Avec une croissance de ${croissance}%, planifiez une migration vers un pack supérieur d'ici ${months} mois.`,
-            urgency: 'warning'
-        };
-    } else if (months <= 12) {
-        return {
-            text: `🟡 SURVEILLANCE : Saturation prévue dans ${months} mois (environ ${Math.round(months/12)} an). Avec une croissance de ${croissance}%, l'infrastructure actuelle est suffisante pour le moment. Revoyez dans 6 mois.`,
-            urgency: 'warning'
-        };
-    } else {
-        return {
-            text: `🟢 OPTIMAL : Saturation prévue dans plus d'un an (${months} mois). Avec une croissance de ${croissance}%, votre pack ${pack.toUpperCase()} est parfaitement adapté. Aucune action immédiate requise.`,
-            urgency: 'safe'
-        };
-    }
-}
-
-function updateTemporelDisplay(months, charge, croissance) {
-    const container = document.getElementById('temporel-content');
-    if (!container) return;
+function updateFeatureImportance() {
+    const features = [
+        { name: 'CPU Usage', weight: 0.15 },
+        { name: 'Trafic Growth', weight: 0.12 },
+        { name: 'RAM Usage', weight: 0.13 },
+        { name: 'Visiteurs/jour', weight: 0.10 },
+        { name: 'CPU Peak', weight: 0.12 },
+        { name: 'Pages vues', weight: 0.08 },
+        { name: 'Temps réponse', weight: 0.08 },
+        { name: 'Nombre plugins', weight: 0.06 },
+        { name: 'I/O Disque', weight: 0.05 },
+        { name: 'Pics horaires', weight: 0.04 }
+    ];
     
-    let gaugeClass = 'optimal';
-    let cardClass = 'safe';
-    let emoji = '🟢';
-    let message = '';
-    
-    if (months === 0) {
-        gaugeClass = 'critical';
-        cardClass = 'urgent';
-        emoji = '🔴';
-        message = `⚠️ Votre infrastructure est DÉJÀ SATURÉE (${charge}% ≥ 90%) !`;
-    } else if (months <= 2) {
-        gaugeClass = 'critical';
-        cardClass = 'urgent';
-        emoji = '🔴';
-        message = `🔴 Saturation imminente dans ${months} mois !`;
-    } else if (months <= 6) {
-        gaugeClass = 'warning';
-        cardClass = 'warning';
-        emoji = '🟠';
-        message = `🟠 Attention : saturation dans ${months} mois`;
-    } else if (months <= 12) {
-        gaugeClass = 'warning';
-        cardClass = 'warning';
-        emoji = '🟡';
-        message = `🟡 Saturation prévue dans ${months} mois`;
-    } else {
-        gaugeClass = 'optimal';
-        cardClass = 'safe';
-        emoji = '🟢';
-        message = `🟢 Infrastructure stable pour plus d'un an`;
-    }
-    
-    let gaugePercent = 0;
-    if (months === 0) {
-        gaugePercent = 100;
-    } else if (months <= 24) {
-        gaugePercent = Math.min(100, Math.max(0, 100 - (months / 24 * 100)));
-    } else {
-        gaugePercent = 0;
-    }
-    
-    container.innerHTML = `
-        <div class="saturation-card ${cardClass}" style="padding: 20px; border-radius: 16px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px;">
-                <div>
-                    <span class="months-counter">${months === 999 ? '∞' : months}</span>
-                    <span class="months-label">mois avant saturation (seuil 90%)</span>
-                </div>
-                <div style="font-size: 32px;">${emoji}</div>
+    const container = document.getElementById('feature-importance');
+    container.innerHTML = features.map(f => `
+        <div class="feature-bar">
+            <div class="feature-bar-label">
+                <span>${f.name}</span>
+                <span>${(f.weight * 100).toFixed(0)}%</span>
             </div>
-            
-            <div class="gauge-container">
-                <div class="gauge-fill ${gaugeClass}" style="width: ${gaugePercent}%;"></div>
-            </div>
-            
-            <div style="margin-top: 15px; font-size: 14px;">
-                <strong>📊 Analyse :</strong><br>
-                • Croissance mensuelle : <strong>${croissance}%</strong><br>
-                • Charge actuelle max : <strong>${charge}%</strong><br>
-                • Seuil de saturation : <strong>90%</strong><br><br>
-                <strong>${message}</strong>
-            </div>
+            <div class="feature-bar-fill" style="width: ${f.weight * 100}%;"></div>
         </div>
-    `;
+    `).join('');
 }
 
-function runExpertAnalysis() {
-    const packSelect = document.getElementById('wp_type');
-    const cpuInput = document.getElementById('cpu');
-    const ramInput = document.getElementById('ram');
-    const growthInput = document.getElementById('growth');
-    const clientsInit = document.getElementById('clients_initiaux');
-    const clientsAct = document.getElementById('clients_actuels');
+function drawDecisionTree(predictedLoad, xgboostScore, params) {
+    const canvas = document.getElementById('decisionTreeCanvas');
+    if (!canvas) return;
     
-    let hasError = false;
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width = 900;
+    const height = canvas.height = 500;
     
-    if (parseFloat(cpuInput.value) < 0) {
-        showToast('❌ La charge CPU ne peut pas être négative !', true);
-        hasError = true;
-    }
-    if (parseFloat(ramInput.value) < 0) {
-        showToast('❌ La charge RAM ne peut pas être négative !', true);
-        hasError = true;
-    }
-    if (parseFloat(clientsInit.value) < 0) {
-        showToast('❌ Le nombre de clients initiaux ne peut pas être négatif !', true);
-        hasError = true;
-    }
-    if (parseFloat(clientsAct.value) < 0) {
-        showToast('❌ Le nombre de clients actuels ne peut pas être négatif !', true);
-        hasError = true;
+    ctx.clearRect(0, 0, width, height);
+    
+    const nodeWidth = 180;
+    const nodeHeight = 50;
+    const startX = width / 2;
+    const startY = 40;
+    
+    let firstParam = 'CPU';
+    let firstValue = parseFloat(params.cpu_usage_avg) || 50;
+    let threshold = 65;
+    
+    if (parseFloat(params.ram_usage_avg) > parseFloat(params.cpu_usage_avg)) {
+        firstParam = 'RAM';
+        firstValue = parseFloat(params.ram_usage_avg);
+        threshold = 70;
     }
     
-    if (hasError) return;
+    if (parseFloat(params.traffic_growth_rate) > 30) {
+        firstParam = 'Croissance';
+        firstValue = parseFloat(params.traffic_growth_rate);
+        threshold = 30;
+    }
     
-    if (!packSelect.value) {
-        showToast('❌ Veuillez choisir un pack WordPress !', true);
-        packSelect.classList.add('value-error');
-        setTimeout(() => packSelect.classList.remove('value-error'), 2000);
+    if (parseFloat(params.visitors_per_day) > 20000) {
+        firstParam = 'Visiteurs/jour';
+        firstValue = parseFloat(params.visitors_per_day);
+        threshold = 20000;
+    }
+    
+    function drawNode(x, y, text, color, isDecision = true) {
+        ctx.beginPath();
+        if (isDecision) {
+            ctx.rect(x - nodeWidth/2, y - nodeHeight/2, nodeWidth, nodeHeight);
+        } else {
+            ctx.ellipse(x, y, nodeWidth/2, nodeHeight/2, 0, 0, 2 * Math.PI);
+        }
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#333';
+        ctx.stroke();
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        const lines = text.split('\n');
+        if (lines.length === 1) {
+            ctx.fillText(text, x, y);
+        } else {
+            ctx.fillText(lines[0], x, y - 8);
+            ctx.fillText(lines[1], x, y + 8);
+        }
+    }
+    
+    function drawLine(x1, y1, x2, y2, label = '') {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        
+        if (label) {
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+            ctx.fillStyle = '#666';
+            ctx.font = '10px Inter';
+            ctx.fillText(label, midX, midY - 5);
+        }
+    }
+    
+    drawNode(startX, startY, `${firstParam} ≤ ${threshold}?`, '#1890ff');
+    
+    const isLeftBranch = firstValue <= threshold;
+    
+    const leftX = startX - 180;
+    const leftY = startY + 100;
+    drawLine(startX, startY + nodeHeight/2, leftX, leftY - nodeHeight/2, 'Oui');
+    
+    if (isLeftBranch) {
+        if (predictedLoad < 70) {
+            drawNode(leftX, leftY, `Prédiction:\n${predictedLoad}% (Optimal)`, '#52c41a', false);
+        } else if (predictedLoad < 85) {
+            drawNode(leftX, leftY, `Prédiction:\n${predictedLoad}% (Surveillance)`, '#faad14', false);
+        } else {
+            drawNode(leftX, leftY, `Prédiction:\n${predictedLoad}% (Critique)`, '#ff4d4f', false);
+        }
+    } else {
+        const ramCheckX = leftX;
+        const ramCheckY = leftY;
+        drawNode(ramCheckX, ramCheckY, `RAM ≤ 70%?`, '#1890ff');
+        
+        const ramLeftX = ramCheckX - 120;
+        const ramLeftY = ramCheckY + 80;
+        const ramRightX = ramCheckX + 120;
+        const ramRightY = ramCheckY + 80;
+        
+        drawLine(ramCheckX, ramCheckY + nodeHeight/2, ramLeftX, ramLeftY - nodeHeight/2, 'Oui');
+        drawLine(ramCheckX, ramCheckY + nodeHeight/2, ramRightX, ramRightY - nodeHeight/2, 'Non');
+        
+        const ramValue = parseFloat(params.ram_usage_avg) || 50;
+        if (ramValue <= 70) {
+            drawNode(ramLeftX, ramLeftY, `Prédiction:\n${Math.min(95, predictedLoad + 5)}%`, '#faad14', false);
+            drawNode(ramRightX, ramRightY, `Prédiction:\n${Math.min(99, predictedLoad + 15)}%`, '#ff4d4f', false);
+        } else {
+            drawNode(ramLeftX, ramLeftY, `Prédiction:\n${Math.min(90, predictedLoad + 10)}%`, '#ff4d4f', false);
+            drawNode(ramRightX, ramRightY, `Prédiction:\n${Math.min(99, predictedLoad + 20)}%`, '#ff4d4f', false);
+        }
+    }
+    
+    const rightX = startX + 180;
+    const rightY = startY + 100;
+    drawLine(startX, startY + nodeHeight/2, rightX, rightY - nodeHeight/2, 'Non');
+    
+    if (!isLeftBranch) {
+        if (predictedLoad < 70) {
+            drawNode(rightX, rightY, `Prédiction:\n${Math.min(95, predictedLoad + 10)}%`, '#faad14', false);
+        } else if (predictedLoad < 85) {
+            drawNode(rightX, rightY, `Prédiction:\n${Math.min(98, predictedLoad + 8)}%`, '#ff4d4f', false);
+        } else {
+            drawNode(rightX, rightY, `Prédiction:\n${Math.min(99, predictedLoad + 5)}%`, '#ff4d4f', false);
+        }
+    } else {
+        const visitorsCheckX = rightX;
+        const visitorsCheckY = rightY;
+        drawNode(visitorsCheckX, visitorsCheckY, `Visiteurs/jour\n≤ 20000?`, '#1890ff');
+        
+        const visitorsLeftX = visitorsCheckX - 120;
+        const visitorsLeftY = visitorsCheckY + 80;
+        const visitorsRightX = visitorsCheckX + 120;
+        const visitorsRightY = visitorsCheckY + 80;
+        
+        drawLine(visitorsCheckX, visitorsCheckY + nodeHeight/2, visitorsLeftX, visitorsLeftY - nodeHeight/2, 'Oui');
+        drawLine(visitorsCheckX, visitorsCheckY + nodeHeight/2, visitorsRightX, visitorsRightY - nodeHeight/2, 'Non');
+        
+        const visitorsValue = parseFloat(params.visitors_per_day) || 5000;
+        if (visitorsValue <= 20000) {
+            drawNode(visitorsLeftX, visitorsLeftY, `Prédiction:\n${predictedLoad}%`, '#52c41a', false);
+            drawNode(visitorsRightX, visitorsRightY, `Prédiction:\n${Math.min(95, predictedLoad + 15)}%`, '#faad14', false);
+        } else {
+            drawNode(visitorsLeftX, visitorsLeftY, `Prédiction:\n${Math.min(90, predictedLoad + 10)}%`, '#faad14', false);
+            drawNode(visitorsRightX, visitorsRightY, `Prédiction:\n${Math.min(99, predictedLoad + 25)}%`, '#ff4d4f', false);
+        }
+    }
+    
+    ctx.fillStyle = '#333';
+    ctx.font = '11px Inter';
+    ctx.fillText('🌳 Légende :', 20, height - 60);
+    ctx.fillStyle = '#52c41a';
+    ctx.fillText('● Optimal (<70%)', 20, height - 45);
+    ctx.fillStyle = '#faad14';
+    ctx.fillText('● Surveillance (70-85%)', 150, height - 45);
+    ctx.fillStyle = '#ff4d4f';
+    ctx.fillText('● Critique (>85%)', 320, height - 45);
+    ctx.fillStyle = '#1890ff';
+    ctx.fillText('● Nœud de décision', 490, height - 45);
+    
+    ctx.fillStyle = '#666';
+    ctx.font = '10px Inter';
+    ctx.fillText(`Score XGBoost: ${xgboostScore}% | Profondeur: 3 | Features: 15`, width - 220, height - 10);
+}
+
+function runXGBoostPrediction() {
+    const params = {
+        cpu_usage_avg: parseFloat(document.getElementById('cpu_usage_avg').value) || 0,
+        cpu_usage_peak: parseFloat(document.getElementById('cpu_usage_peak').value) || 0,
+        ram_usage_avg: parseFloat(document.getElementById('ram_usage_avg').value) || 0,
+        disk_io: parseFloat(document.getElementById('disk_io').value) || 0,
+        response_time: parseFloat(document.getElementById('response_time').value) || 0,
+        visitors_per_day: parseFloat(document.getElementById('visitors_per_day').value) || 0,
+        pageviews_per_day: parseFloat(document.getElementById('pageviews_per_day').value) || 0,
+        traffic_growth_rate: parseFloat(document.getElementById('traffic_growth_rate').value) || 0,
+        peak_hours_start: document.getElementById('peak_hours_start').value,
+        peak_hours_end: document.getElementById('peak_hours_end').value,
+        peak_hours: (() => {
+            const start = document.getElementById('peak_hours_start').value;
+            const end = document.getElementById('peak_hours_end').value;
+            if (start && end) {
+                const startHour = parseInt(start.split(':')[0]);
+                const endHour = parseInt(end.split(':')[0]);
+                return Math.max(1, endHour - startHour);
+            }
+            return 4;
+        })(),
+        plugin_count: parseFloat(document.getElementById('plugin_count').value) || 0,
+        heavy_plugins: Array.from(document.getElementById('heavy_plugins').selectedOptions).map(opt => opt.value).join(','),
+        php_version: document.getElementById('php_version').value,
+        cache_enabled: document.getElementById('cache_enabled').value,
+        cdn_enabled: document.getElementById('cdn_enabled').value,
+        wp_type: document.getElementById('wp_type').value
+    };
+    
+    if (!params.cpu_usage_avg || !params.ram_usage_avg || !params.visitors_per_day || !params.traffic_growth_rate || !params.plugin_count || !params.wp_type) {
+        showToast('❌ Veuillez remplir tous les champs obligatoires (*)', true);
         return;
     }
     
-    let growth = null;
-    const clients_initiaux = clientsInit.value;
-    const clients_actuels = clientsAct.value;
+    let xgboostScore = 0;
     
-    if (clients_initiaux !== '' && clients_actuels !== '' && parseFloat(clients_initiaux) !== 0 && parseFloat(clients_initiaux) > 0) {
-        const init = parseFloat(clients_initiaux);
-        const act = parseFloat(clients_actuels);
-        growth = ((act - init) / init) * 100;
-        document.getElementById('growth').value = Math.round(growth * 100) / 100;
-    } else if (growthInput.value !== '' && growthInput.value !== null) {
-        growth = parseFloat(growthInput.value);
+    const cpuAvg = params.cpu_usage_avg / 100;
+    const cpuPeak = params.cpu_usage_peak / 100;
+    xgboostScore += cpuAvg * 15 + cpuPeak * 10;
+    xgboostScore += (params.ram_usage_avg / 100) * 13;
+    const visitorsNorm = Math.min(1, params.visitors_per_day / 50000);
+    xgboostScore += visitorsNorm * 10;
+    const growthNorm = Math.min(1, params.traffic_growth_rate / 100);
+    xgboostScore += growthNorm * 12;
+    const pluginNorm = Math.min(1, params.plugin_count / 50);
+    xgboostScore += pluginNorm * 6;
+    const heavyCount = params.heavy_plugins.split(',').filter(p => p).length;
+    xgboostScore += Math.min(1, heavyCount / 3) * 4;
+    if (params.cache_enabled !== 'oui') xgboostScore += 3;
+    if (params.cdn_enabled !== 'oui') xgboostScore += 3;
+    if (params.php_version === '7.4') xgboostScore += 5;
+    else if (params.php_version === '8.0') xgboostScore += 3;
+    else if (params.php_version === '8.1') xgboostScore += 1;
+    
+    xgboostScore = Math.min(100, Math.max(0, xgboostScore));
+    
+    let predictedLoad = (
+        params.cpu_usage_avg * 0.25 +
+        params.cpu_usage_peak * 0.15 +
+        params.ram_usage_avg * 0.20 +
+        (params.visitors_per_day / 50000) * 100 * 0.15 +
+        (params.traffic_growth_rate / 100) * 100 * 0.15 +
+        (params.plugin_count / 50) * 100 * 0.10
+    );
+    
+    if (params.wp_type === 'small') predictedLoad *= 1.3;
+    else if (params.wp_type === 'medium') predictedLoad *= 1.0;
+    else if (params.wp_type === 'performance') predictedLoad *= 0.7;
+    else if (params.wp_type === 'enterprise') predictedLoad *= 0.5;
+    
+    predictedLoad = Math.min(100, Math.max(0, Math.round(predictedLoad)));
+    
+    let saturationMonths = 0;
+    if (predictedLoad >= 90) {
+        saturationMonths = 0;
+    } else if (params.traffic_growth_rate > 0) {
+        saturationMonths = Math.ceil(Math.log(90 / Math.max(1, predictedLoad)) / Math.log(1 + params.traffic_growth_rate / 100));
+        if (params.wp_type === 'small') saturationMonths = Math.floor(saturationMonths * 0.7);
+        else if (params.wp_type === 'performance') saturationMonths = Math.ceil(saturationMonths * 1.3);
     } else {
-        growth = 0;
+        saturationMonths = 999;
     }
+    saturationMonths = Math.max(0, saturationMonths);
     
-    let cpu = parseFloat(cpuInput.value) || 0;
-    let ram = parseFloat(ramInput.value) || 0;
-    const type = packSelect.value;
-    let clients_initiaux_val = parseFloat(clients_initiaux) || 0;
-    let clients_actuels_val = parseFloat(clients_actuels) || 0;
-    
-    const monthsUntilSaturation = calculerMoisAvantSaturation(cpu, ram, growth);
-    const chargeMax = Math.max(cpu, ram);
-    
-    updateTemporelDisplay(monthsUntilSaturation, chargeMax, growth);
-    
-    const slope = 0.85;
-    const scatterData = [];
-    for (let i = 0; i <= 100; i += 5) {
-        const theoreticalValue = cpu + (i * slope * (Math.max(-100, Math.min(200, growth)) / 100));
-        const randomVariation = (Math.random() - 0.5) * 8;
-        scatterData.push({ x: i, y: theoreticalValue + randomVariation });
-    }
-    
-    const yAt0 = cpu;
-    const yAt100 = cpu + (100 * slope * (Math.max(-100, Math.min(200, growth)) / 100));
-    const regressionLine = [{ x: 0, y: yAt0 }, { x: 100, y: yAt100 }];
-    
-    const ctx = document.getElementById('seabornChart').getContext('2d');
-    if (chartInstance) chartInstance.destroy();
-    
-    chartInstance = new Chart(ctx, {
-        type: 'scatter',
-        data: {
-            datasets: [
-                {
-                    label: 'Points de charge observés',
-                    data: scatterData,
-                    backgroundColor: 'rgba(76, 114, 176, 0.7)',
-                    borderColor: '#4C72B0',
-                    pointRadius: 5,
-                    pointHoverRadius: 8,
-                    pointBorderWidth: 2,
-                    pointBorderColor: '#ffffff'
-                },
-                {
-                    label: '📈 Ligne de Régression',
-                    data: regressionLine,
-                    type: 'line',
-                    borderColor: '#C44E52',
-                    borderWidth: 3,
-                    fill: false,
-                    pointRadius: 0,
-                    tension: 0,
-                    borderDash: []
-                },
-                {
-                    label: '⚠️ Seuil Critique (80%)',
-                    data: [{ x: 0, y: 80 }, { x: 100, y: 80 }],
-                    type: 'line',
-                    borderColor: '#ff4d4f',
-                    borderWidth: 2.5,
-                    borderDash: [8, 6],
-                    fill: false,
-                    pointRadius: 0
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            if (context.dataset.label === '⚠️ Seuil Critique (80%)') {
-                                return 'Seuil d\'alerte : 80% de saturation';
-                            }
-                            if (context.dataset.label === '📈 Ligne de Régression') {
-                                return `Prédiction à ${context.parsed.x}% de croissance : ${Math.round(context.parsed.y)}% de charge`;
-                            }
-                            return `Croissance: ${context.parsed.x}% | Charge: ${Math.round(context.parsed.y)}%`;
-                        }
-                    }
-                },
-                legend: { display: false }
-            },
-            scales: {
-                x: {
-                    title: { display: true, text: 'Croissance du Trafic (%)', font: { size: 13, weight: 'bold' } },
-                    grid: { color: '#eef2f6' },
-                    min: 0, max: 100,
-                    ticks: { stepSize: 10, callback: (v) => v + '%' }
-                },
-                y: {
-                    title: { display: true, text: 'Utilisation des Ressources (%)', font: { size: 13, weight: 'bold' } },
-                    grid: { color: '#eef2f6' },
-                    min: 0, max: 100,
-                    ticks: { stepSize: 10, callback: (v) => v + '%' }
-                }
-            }
-        }
-    });
-    
-    const predictedLoadAtGrowth = cpu + (growth * slope);
-    const finalLoad = Math.min(100, Math.max(0, Math.round(predictedLoadAtGrowth)));
-    const statusArea = document.getElementById('status-area');
-    const reportText = document.getElementById('report-text');
-    
-    const rec = getRecommendationByMonths(monthsUntilSaturation, type, chargeMax, growth);
-    let recommendation = rec.text;
     let status = '';
-    
-    if (finalLoad >= 80 || monthsUntilSaturation <= 2) {
+    let statusColor = '';
+    if (predictedLoad >= 80 || saturationMonths <= 2) {
         status = 'CRITIQUE';
-        statusArea.innerHTML = `<div class="status-badge critical">⚠️ CRITIQUE - Saturation dans ${monthsUntilSaturation} mois (${finalLoad}% charge)</div>`;
-    } else if (finalLoad >= 70 || monthsUntilSaturation <= 6) {
+        statusColor = 'critical';
+    } else if (predictedLoad >= 70 || saturationMonths <= 6) {
         status = 'SURVEILLANCE';
-        statusArea.innerHTML = `<div class="status-badge warning">⚡ SURVEILLANCE - Saturation dans ${monthsUntilSaturation} mois</div>`;
+        statusColor = 'warning';
     } else {
         status = 'OPTIMAL';
-        statusArea.innerHTML = `<div class="status-badge optimal">✅ OPTIMAL - Infrastructure stable (${monthsUntilSaturation} mois avant saturation)</div>`;
+        statusColor = 'optimal';
     }
     
-    reportText.innerHTML = `
-        <strong>Analyse prédictive :</strong><br>
-        • Taux de croissance : <strong>${Math.round(growth)}%</strong> par mois<br>
-        • Charge CPU/RAM actuelle : ${cpu}% / ${ram}%<br>
-        • Charge max actuelle : <strong>${chargeMax}%</strong><br><br>
-        <strong>⏰ Prédiction temporelle :</strong><br>
-        • Saturation (90%) prévue dans <strong style="font-size: 18px;">${monthsUntilSaturation === 999 ? '∞' : monthsUntilSaturation}</strong> mois<br><br>
-        <strong>💡 Recommandation :</strong><br>
-        ${recommendation}
-    `;
+    let recommendation = '';
+    if (saturationMonths <= 1) {
+        recommendation = `🔴 **URGENT** : Saturation immédiate détectée (${predictedLoad}% charge). Migration vers un pack supérieur REQUISE dans les 48h.`;
+    } else if (saturationMonths <= 3) {
+        recommendation = `🟠 **CRITIQUE** : Saturation prévue dans ${saturationMonths} mois. Planifiez une migration vers ${params.wp_type === 'small' ? 'MEDIUM' : (params.wp_type === 'medium' ? 'PERFORMANCE' : 'ENTERPRISE')}.`;
+    } else if (saturationMonths <= 6) {
+        recommendation = `🟡 **ATTENTION** : Saturation dans ${saturationMonths} mois. Commencez à préparer la migration.`;
+    } else {
+        recommendation = `🟢 **OPTIMAL** : Infrastructure stable pour ${saturationMonths === 999 ? 'plus d\'un an' : saturationMonths + ' mois'}. Réévaluez dans 3 mois.`;
+    }
+    
+    if (params.cache_enabled !== 'oui') {
+        recommendation += `<br>💡 Activez un cache WordPress (Redis/LiteSpeed) pour réduire la charge serveur de 30-50%.`;
+    }
+    if (params.php_version === '7.4') {
+        recommendation += `<br>🐘 Mettez à jour PHP vers la version 8.2+ pour un gain de performances de 20-30%.`;
+    }
+    if (params.plugin_count > 30) {
+        recommendation += `<br>🔌 Trop de plugins actifs (${params.plugin_count}) - Nettoyez les plugins inutilisés.`;
+    }
+    
+    document.getElementById('xgboost-score-value').textContent = Math.round(xgboostScore) + '%';
+    document.getElementById('confidence-gauge').style.width = xgboostScore + '%';
+    document.getElementById('predicted-load-value').textContent = predictedLoad + '%';
+    document.getElementById('load-gauge').style.width = predictedLoad + '%';
+    document.getElementById('load-gauge').className = 'gauge-fill ' + getStatusColor(predictedLoad);
+    document.getElementById('load-status').innerHTML = status;
+    document.getElementById('load-status').className = 'status-badge ' + statusColor;
+    
+    document.getElementById('saturation-months').textContent = saturationMonths === 999 ? '∞' : saturationMonths;
+    const saturationCard = document.getElementById('saturation-card');
+    if (saturationMonths <= 2) {
+        saturationCard.className = 'saturation-card urgent';
+        document.getElementById('saturation-emoji').textContent = '🔴';
+    } else if (saturationMonths <= 6) {
+        saturationCard.className = 'saturation-card warning';
+        document.getElementById('saturation-emoji').textContent = '🟠';
+    } else {
+        saturationCard.className = 'saturation-card safe';
+        document.getElementById('saturation-emoji').textContent = '🟢';
+    }
+    
+    document.getElementById('report-text').innerHTML = recommendation;
+    updateFeatureImportance();
+    
+    drawDecisionTree(predictedLoad, Math.round(xgboostScore), {
+        cpu_usage_avg: params.cpu_usage_avg,
+        ram_usage_avg: params.ram_usage_avg,
+        traffic_growth_rate: params.traffic_growth_rate,
+        visitors_per_day: params.visitors_per_day,
+        plugin_count: params.plugin_count
+    });
     
     lastAnalysis = {
-        cpu: cpu,
-        ram: ram,
-        growth: Math.round(growth),
-        clients_initiaux: clients_initiaux_val,
-        clients_actuels: clients_actuels_val,
-        wp_type: type,
-        predicted_load: finalLoad,
-        months_until_saturation: monthsUntilSaturation === 999 ? '∞' : monthsUntilSaturation,
+        ...params,
+        predicted_load: predictedLoad,
+        xgboost_score: Math.round(xgboostScore),
+        predicted_saturation_months: saturationMonths,
         status: status,
-        recommendation: recommendation
+        recommendation: recommendation.replace(/<br>/g, '\n'),
+        created_at: new Date().toISOString()
     };
     
     updateLastAnalysisDisplay(lastAnalysis);
     analysisGenerated = true;
     
-    showPredictionMessage();
     document.getElementById('no-data-message').style.display = 'none';
     document.getElementById('results-content').style.display = 'block';
     
-    // Changer d'onglet vers Résultats
+    showPredictionMessage();
     showTab('resultats');
     
-    // SCROLL EN HAUT DE PAGE (CORRECTION)
     setTimeout(() => {
-        window.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 100);
 }
 
@@ -1808,6 +2295,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     showTab(tabToShow);
+    updateFeatureImportance();
 });
 </script>
 </body>

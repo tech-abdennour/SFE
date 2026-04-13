@@ -13,6 +13,7 @@ services:
       - php
     networks:
       - sfe_net
+    restart: unless-stopped
 
   php:
     build: ./php
@@ -22,6 +23,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - sfe_net
+    restart: unless-stopped
 
   db:
     image: mariadb:10.11
@@ -36,23 +38,28 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - sfe_net
+    restart: unless-stopped
 
-  # --- LE NOUVEAU SERVICE DEBIAN (Bien aligné à gauche) ---
   debian_worker:
-    build: 
+    build:
       context: .
       dockerfile: ./services_debian/Dockerfile
     container_name: debian_worker
     volumes:
+      - ./:/workspace
       - ./backups:/var/backups
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - sfe_net
     depends_on:
       - db
-    restart: always
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
 
 networks:
   sfe_net:
+    driver: bridge
 
 volumes:
   db_data:

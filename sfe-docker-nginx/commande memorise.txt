@@ -1,0 +1,8 @@
+docker exec -it debian_worker bash
+cd /workspace
+ls
+#####################
+docker compose up -d --build
+docker exec -it debian_worker bash
+cd /workspace
+ls

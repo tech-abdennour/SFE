@@ -8,6 +8,7 @@
 
 # --- CONFIGURATION ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+#echo "SCRIPT_DIR = "$SCRIPT_DIR
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_DIR="$PROJECT_DIR/logs"
 
