@@ -1,65 +1,47 @@
-version: "3.9"
-
 services:
+
   nginx:
     image: nginx:alpine
     container_name: nginx_web
     ports:
       - "80:80"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
       - ./app:/var/www/html
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - php
     networks:
       - sfe_net
-    restart: unless-stopped
 
   php:
-    build: ./php
+    build:
+      context: ./php
     container_name: php_fpm
     volumes:
       - ./app:/var/www/html
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - sfe_net
-    restart: unless-stopped
-
-  db:
-    image: mariadb:10.11
-    container_name: mariadb_db
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: sfe_db
-      MYSQL_USER: sfe_user
-      MYSQL_PASSWORD: sfe_pass
-    volumes:
-      - db_data:/var/lib/mysql
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - sfe_net
-    restart: unless-stopped
-
-  debian_worker:
-    build:
-      context: .
-      dockerfile: ./services_debian/Dockerfile
-    container_name: debian_worker
-    volumes:
-      - ./:/workspace
-      - ./backups:/var/backups
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - sfe_net
     depends_on:
       - db
-    restart: unless-stopped
-    tty: true
-    stdin_open: true
 
-networks:
-  sfe_net:
-    driver: bridge
+  db:
+    image: mariadb:10.11
+    container_name: mariadb_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: app_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: userpass
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - sfe_net
 
 volumes:
   db_data:
+
+networks:
+  sfe_net:
