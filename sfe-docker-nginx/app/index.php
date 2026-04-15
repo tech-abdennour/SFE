@@ -1,3 +1,4 @@
+bon se code il permet de telecharger le json des données remplis dans saisie des paramètres après avoir cliquée sur lancer prédiction xgboost mias je veux qu'elle se telecharge içi C:\Users\algebra\Desktop\TP_CODE\SFE\sfe-docker-nginx\app pas dans telechargement :
 <?php
 session_start();
 
@@ -493,7 +494,7 @@ function deletePermanently($pdo, $id) {
     }
 }
 
-// --- NOUVEAU: ROUTE POUR EXPORT CSV COMPLET ---
+// --- ROUTE POUR EXPORT CSV COMPLET ---
 if (isset($_GET['export_full_csv']) && isset($_SESSION['logged_in'])) {
     $predictions = getPredictions($pdo);
     
@@ -555,7 +556,6 @@ if (isset($_GET['export_full_csv']) && isset($_SESSION['logged_in'])) {
         $csvData[] = $row;
     }
     
-    // Conversion en CSV
     $csvContent = '';
     foreach ($csvData as $row) {
         $escapedRow = array_map(function($cell) {
@@ -1158,36 +1158,6 @@ exit();
             gap: 10px;
         }
         
-        .xgboost-score {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 12px;
-            padding: 15px;
-            text-align: center;
-            color: white;
-        }
-        .xgboost-score .score-value {
-            font-size: 36px;
-            font-weight: 700;
-        }
-        
-        .feature-importance {
-            margin-top: 20px;
-        }
-        .feature-bar {
-            margin: 8px 0;
-        }
-        .feature-bar-label {
-            font-size: 11px;
-            margin-bottom: 4px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .feature-bar-fill {
-            height: 6px;
-            background: linear-gradient(90deg, #1890ff, #40a9ff);
-            border-radius: 3px;
-        }
-        
         .param-section {
             background: #f8f9fa;
             border-radius: 16px;
@@ -1208,21 +1178,6 @@ exit();
         .required-field {
             color: #ff4d4f;
             margin-left: 4px;
-        }
-
-        #dtreeviz-container {
-            background: #f8f9fa;
-            border-radius: 16px;
-            padding: 20px;
-            text-align: center;
-            min-height: 500px;
-            overflow-x: auto;
-        }
-        
-        #decisionTreeCanvas {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .export-csv-btn {
@@ -1266,8 +1221,6 @@ exit();
         <div class="menu-item <?php echo $active_tab == 'historique' ? 'active-menu' : ''; ?>" onclick="showTab('historique')">📜 Historique</div>
         <div class="menu-item <?php echo $active_tab == 'supprimee' ? 'active-menu' : ''; ?>" onclick="showTab('supprimee')">🗑️ Corbeille</div>
     </div>
-    
-    
     
     <a href="?logout=1" class="logout-link">
         <span>🚪</span> Déconnexion
@@ -1407,84 +1360,15 @@ exit();
         </div>
         
         <div class="card">
-            <button class="btn-primary" onclick="runXGBoostPrediction()">
+            <button class="btn-primary" onclick="saveParametersToJSON()">
                 🚀 LANCER LA PRÉDICTION XGBOOST
             </button>
         </div>
     </div>
     
-    <!-- Résultats Tab -->
+    <!-- Résultats Tab - COMPLÈTEMENT VIDÉ -->
     <div id="resultats" class="tab-content <?php echo $active_tab == 'resultats' ? 'active-tab' : ''; ?>">
-        <div class="page-title">
-            <h1>📈 Analyse XGBoost - Résultats</h1>
-            <p>Modèle d'arbre de décision gradient boosting</p>
-        </div>
-        
-        <div id="no-data-message" class="error-message-box" style="display: none;">
-            ⚠️ Aucune analyse disponible. Veuillez d'abord saisir les données dans l'onglet "Saisie des paramètres".
-        </div>
-        
-        <div id="results-content" style="display: none;">
-            <div class="grid-2">
-                <div class="card">
-                    <h3>🎯 Score de Confiance XGBoost</h3>
-                    <div class="xgboost-score" id="xgboost-score-display">
-                        <div class="score-value" id="xgboost-score-value">--</div>
-                        <div>Score de confiance du modèle</div>
-                        <div class="gauge-container" style="margin-top: 15px;">
-                            <div class="gauge-fill" id="confidence-gauge" style="width: 0%; background: linear-gradient(90deg, #52c41a, #1890ff);"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <h3>⚡ Charge Prédite</h3>
-                    <div style="text-align: center;">
-                        <div style="font-size: 48px; font-weight: 700;" id="predicted-load-value">--%</div>
-                        <div class="gauge-container" style="margin-top: 15px;">
-                            <div class="gauge-fill" id="load-gauge" style="width: 0%;"></div>
-                        </div>
-                        <div id="load-status" class="status-badge" style="margin-top: 15px; display: inline-flex;"></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>⏰ Prédiction de Saturation</h3>
-                <div id="saturation-card" class="saturation-card safe">
-                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-                        <div>
-                            <span class="months-counter" id="saturation-months">--</span>
-                            <span class="months-label">mois avant saturation (seuil 90%)</span>
-                        </div>
-                        <div id="saturation-emoji" style="font-size: 32px;">🟢</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>🌳 Visualisation de l'Arbre de Décision (dtreeviz)</h3>
-                <div id="dtreeviz-container">
-                    <canvas id="decisionTreeCanvas" width="900" height="500" style="max-width: 100%; height: auto; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></canvas>
-                </div>
-                <div style="margin-top: 15px; font-size: 12px; color: #8a9bb0; text-align: center;">
-                    🌳 Arbre de décision XGBoost - Visualisation du processus de prédiction<br>
-                    Chaque nœud représente une décision basée sur un paramètre (CPU, RAM, trafic, etc.)
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>🔍 Importance des Features (XGBoost)</h3>
-                <div class="feature-importance" id="feature-importance"></div>
-            </div>
-            
-            <div class="card expert-report" id="expert-report">
-                <h3>🛡️ Recommandation XGBoost</h3>
-                <p id="report-text" style="line-height: 1.6; color: #2c3e50;"></p>
-                <p style="font-size: 11px; color: #8a9bb0; margin-top: 16px; padding-top: 12px; border-top: 1px solid #eef2f6;">
-                    🤖 Modèle : XGBoost (Gradient Boosting) | 15 features | Accuracy: 94.2% | AUC: 0.96
-                </p>
-            </div>
-        </div>
+        <!-- Onglet résultats vide -->
     </div>
     
     <!-- Sauvegarde Tab -->
@@ -1745,14 +1629,153 @@ function showToast(message, isError = false) {
     }, 3000);
 }
 
-function showPredictionMessage() {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'prediction-message';
-    msgDiv.innerHTML = '✅ Prédiction XGBoost terminée ! Consultez les résultats détaillés.';
-    document.body.appendChild(msgDiv);
+function saveParametersToJSON() {
+    const params = {
+        cpu_usage_avg: parseFloat(document.getElementById('cpu_usage_avg').value) || 0,
+        cpu_usage_peak: parseFloat(document.getElementById('cpu_usage_peak').value) || 0,
+        ram_usage_avg: parseFloat(document.getElementById('ram_usage_avg').value) || 0,
+        disk_io: parseFloat(document.getElementById('disk_io').value) || 0,
+        response_time: parseFloat(document.getElementById('response_time').value) || 0,
+        visitors_per_day: parseFloat(document.getElementById('visitors_per_day').value) || 0,
+        pageviews_per_day: parseFloat(document.getElementById('pageviews_per_day').value) || 0,
+        traffic_growth_rate: parseFloat(document.getElementById('traffic_growth_rate').value) || 0,
+        peak_hours_start: document.getElementById('peak_hours_start').value,
+        peak_hours_end: document.getElementById('peak_hours_end').value,
+        peak_hours: (() => {
+            const start = document.getElementById('peak_hours_start').value;
+            const end = document.getElementById('peak_hours_end').value;
+            if (start && end) {
+                const startHour = parseInt(start.split(':')[0]);
+                const endHour = parseInt(end.split(':')[0]);
+                return Math.max(1, endHour - startHour);
+            }
+            return 4;
+        })(),
+        plugin_count: parseFloat(document.getElementById('plugin_count').value) || 0,
+        heavy_plugins: Array.from(document.getElementById('heavy_plugins').selectedOptions).map(opt => opt.value).join(','),
+        php_version: document.getElementById('php_version').value,
+        cache_enabled: document.getElementById('cache_enabled').value,
+        cdn_enabled: document.getElementById('cdn_enabled').value,
+        wp_type: document.getElementById('wp_type').value
+    };
+    
+    if (!params.cpu_usage_avg || !params.ram_usage_avg || !params.visitors_per_day || !params.traffic_growth_rate || !params.plugin_count || !params.wp_type) {
+        showToast('❌ Veuillez remplir tous les champs obligatoires (*)', true);
+        return;
+    }
+    
+    // Création du fichier JSON
+    const jsonData = JSON.stringify(params, null, 2);
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prediction_params_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast('✅ Paramètres sauvegardés en JSON !');
+    
+    // Calcul pour lastAnalysis
+    let xgboostScore = 0;
+    const cpuAvg = params.cpu_usage_avg / 100;
+    const cpuPeak = params.cpu_usage_peak / 100;
+    xgboostScore += cpuAvg * 15 + cpuPeak * 10;
+    xgboostScore += (params.ram_usage_avg / 100) * 13;
+    const visitorsNorm = Math.min(1, params.visitors_per_day / 50000);
+    xgboostScore += visitorsNorm * 10;
+    const growthNorm = Math.min(1, params.traffic_growth_rate / 100);
+    xgboostScore += growthNorm * 12;
+    const pluginNorm = Math.min(1, params.plugin_count / 50);
+    xgboostScore += pluginNorm * 6;
+    const heavyCount = params.heavy_plugins.split(',').filter(p => p).length;
+    xgboostScore += Math.min(1, heavyCount / 3) * 4;
+    if (params.cache_enabled !== 'oui') xgboostScore += 3;
+    if (params.cdn_enabled !== 'oui') xgboostScore += 3;
+    if (params.php_version === '7.4') xgboostScore += 5;
+    else if (params.php_version === '8.0') xgboostScore += 3;
+    else if (params.php_version === '8.1') xgboostScore += 1;
+    
+    xgboostScore = Math.min(100, Math.max(0, xgboostScore));
+    
+    let predictedLoad = (
+        params.cpu_usage_avg * 0.25 +
+        params.cpu_usage_peak * 0.15 +
+        params.ram_usage_avg * 0.20 +
+        (params.visitors_per_day / 50000) * 100 * 0.15 +
+        (params.traffic_growth_rate / 100) * 100 * 0.15 +
+        (params.plugin_count / 50) * 100 * 0.10
+    );
+    
+    if (params.wp_type === 'small') predictedLoad *= 1.3;
+    else if (params.wp_type === 'medium') predictedLoad *= 1.0;
+    else if (params.wp_type === 'performance') predictedLoad *= 0.7;
+    else if (params.wp_type === 'enterprise') predictedLoad *= 0.5;
+    
+    predictedLoad = Math.min(100, Math.max(0, Math.round(predictedLoad)));
+    
+    let saturationMonths = 0;
+    if (predictedLoad >= 90) {
+        saturationMonths = 0;
+    } else if (params.traffic_growth_rate > 0) {
+        saturationMonths = Math.ceil(Math.log(90 / Math.max(1, predictedLoad)) / Math.log(1 + params.traffic_growth_rate / 100));
+        if (params.wp_type === 'small') saturationMonths = Math.floor(saturationMonths * 0.7);
+        else if (params.wp_type === 'performance') saturationMonths = Math.ceil(saturationMonths * 1.3);
+    } else {
+        saturationMonths = 999;
+    }
+    saturationMonths = Math.max(0, saturationMonths);
+    
+    let status = '';
+    if (predictedLoad >= 80 || saturationMonths <= 2) {
+        status = 'CRITIQUE';
+    } else if (predictedLoad >= 70 || saturationMonths <= 6) {
+        status = 'SURVEILLANCE';
+    } else {
+        status = 'OPTIMAL';
+    }
+    
+    let recommendation = '';
+    if (saturationMonths <= 1) {
+        recommendation = `🔴 **URGENT** : Saturation immédiate détectée (${predictedLoad}% charge). Migration vers un pack supérieur REQUISE dans les 48h.`;
+    } else if (saturationMonths <= 3) {
+        recommendation = `🟠 **CRITIQUE** : Saturation prévue dans ${saturationMonths} mois. Planifiez une migration vers ${params.wp_type === 'small' ? 'MEDIUM' : (params.wp_type === 'medium' ? 'PERFORMANCE' : 'ENTERPRISE')}.`;
+    } else if (saturationMonths <= 6) {
+        recommendation = `🟡 **ATTENTION** : Saturation dans ${saturationMonths} mois. Commencez à préparer la migration.`;
+    } else {
+        recommendation = `🟢 **OPTIMAL** : Infrastructure stable pour ${saturationMonths === 999 ? 'plus d\'un an' : saturationMonths + ' mois'}. Réévaluez dans 3 mois.`;
+    }
+    
+    if (params.cache_enabled !== 'oui') {
+        recommendation += `<br>💡 Activez un cache WordPress (Redis/LiteSpeed) pour réduire la charge serveur de 30-50%.`;
+    }
+    if (params.php_version === '7.4') {
+        recommendation += `<br>🐘 Mettez à jour PHP vers la version 8.2+ pour un gain de performances de 20-30%.`;
+    }
+    if (params.plugin_count > 30) {
+        recommendation += `<br>🔌 Trop de plugins actifs (${params.plugin_count}) - Nettoyez les plugins inutilisés.`;
+    }
+    
+    lastAnalysis = {
+        ...params,
+        predicted_load: predictedLoad,
+        xgboost_score: Math.round(xgboostScore),
+        predicted_saturation_months: saturationMonths,
+        status: status,
+        recommendation: recommendation.replace(/<br>/g, '\n'),
+        created_at: new Date().toISOString()
+    };
+    
+    updateLastAnalysisDisplay(lastAnalysis);
+    analysisGenerated = true;
+    
+    showToast('✅ Prédiction XGBoost terminée !');
+    
     setTimeout(() => {
-        msgDiv.remove();
-    }, 4000);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
 }
 
 async function saveCurrentAnalysis() {
@@ -1867,7 +1890,6 @@ async function supprimerDefinitivement(id) {
 }
 
 function exportToCSV() {
-    // Redirection vers l'URL d'export qui va générer le CSV complet depuis la base de données
     window.location.href = window.location.pathname + '?export_full_csv=1';
     showToast('📥 Export CSV complet en cours... (23 colonnes)');
 }
@@ -1904,384 +1926,6 @@ function updateLastAnalysisDisplay(analysis) {
     saveBtn.disabled = false;
 }
 
-function getStatusColor(load) {
-    if (load >= 80) return 'critical';
-    if (load >= 70) return 'warning';
-    return 'optimal';
-}
-
-function updateFeatureImportance() {
-    const features = [
-        { name: 'CPU Usage', weight: 0.15 },
-        { name: 'Trafic Growth', weight: 0.12 },
-        { name: 'RAM Usage', weight: 0.13 },
-        { name: 'Visiteurs/jour', weight: 0.10 },
-        { name: 'CPU Peak', weight: 0.12 },
-        { name: 'Pages vues', weight: 0.08 },
-        { name: 'Temps réponse', weight: 0.08 },
-        { name: 'Nombre plugins', weight: 0.06 },
-        { name: 'I/O Disque', weight: 0.05 },
-        { name: 'Pics horaires', weight: 0.04 }
-    ];
-    
-    const container = document.getElementById('feature-importance');
-    container.innerHTML = features.map(f => `
-        <div class="feature-bar">
-            <div class="feature-bar-label">
-                <span>${f.name}</span>
-                <span>${(f.weight * 100).toFixed(0)}%</span>
-            </div>
-            <div class="feature-bar-fill" style="width: ${f.weight * 100}%;"></div>
-        </div>
-    `).join('');
-}
-
-function drawDecisionTree(predictedLoad, xgboostScore, params) {
-    const canvas = document.getElementById('decisionTreeCanvas');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width = 900;
-    const height = canvas.height = 500;
-    
-    ctx.clearRect(0, 0, width, height);
-    
-    const nodeWidth = 180;
-    const nodeHeight = 50;
-    const startX = width / 2;
-    const startY = 40;
-    
-    let firstParam = 'CPU';
-    let firstValue = parseFloat(params.cpu_usage_avg) || 50;
-    let threshold = 65;
-    
-    if (parseFloat(params.ram_usage_avg) > parseFloat(params.cpu_usage_avg)) {
-        firstParam = 'RAM';
-        firstValue = parseFloat(params.ram_usage_avg);
-        threshold = 70;
-    }
-    
-    if (parseFloat(params.traffic_growth_rate) > 30) {
-        firstParam = 'Croissance';
-        firstValue = parseFloat(params.traffic_growth_rate);
-        threshold = 30;
-    }
-    
-    if (parseFloat(params.visitors_per_day) > 20000) {
-        firstParam = 'Visiteurs/jour';
-        firstValue = parseFloat(params.visitors_per_day);
-        threshold = 20000;
-    }
-    
-    function drawNode(x, y, text, color, isDecision = true) {
-        ctx.beginPath();
-        if (isDecision) {
-            ctx.rect(x - nodeWidth/2, y - nodeHeight/2, nodeWidth, nodeHeight);
-        } else {
-            ctx.ellipse(x, y, nodeWidth/2, nodeHeight/2, 0, 0, 2 * Math.PI);
-        }
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.strokeStyle = '#333';
-        ctx.stroke();
-        
-        ctx.fillStyle = '#fff';
-        ctx.font = '12px Inter';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        const lines = text.split('\n');
-        if (lines.length === 1) {
-            ctx.fillText(text, x, y);
-        } else {
-            ctx.fillText(lines[0], x, y - 8);
-            ctx.fillText(lines[1], x, y + 8);
-        }
-    }
-    
-    function drawLine(x1, y1, x2, y2, label = '') {
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.strokeStyle = '#666';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        
-        if (label) {
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2;
-            ctx.fillStyle = '#666';
-            ctx.font = '10px Inter';
-            ctx.fillText(label, midX, midY - 5);
-        }
-    }
-    
-    drawNode(startX, startY, `${firstParam} ≤ ${threshold}?`, '#1890ff');
-    
-    const isLeftBranch = firstValue <= threshold;
-    
-    const leftX = startX - 180;
-    const leftY = startY + 100;
-    drawLine(startX, startY + nodeHeight/2, leftX, leftY - nodeHeight/2, 'Oui');
-    
-    if (isLeftBranch) {
-        if (predictedLoad < 70) {
-            drawNode(leftX, leftY, `Prédiction:\n${predictedLoad}% (Optimal)`, '#52c41a', false);
-        } else if (predictedLoad < 85) {
-            drawNode(leftX, leftY, `Prédiction:\n${predictedLoad}% (Surveillance)`, '#faad14', false);
-        } else {
-            drawNode(leftX, leftY, `Prédiction:\n${predictedLoad}% (Critique)`, '#ff4d4f', false);
-        }
-    } else {
-        const ramCheckX = leftX;
-        const ramCheckY = leftY;
-        drawNode(ramCheckX, ramCheckY, `RAM ≤ 70%?`, '#1890ff');
-        
-        const ramLeftX = ramCheckX - 120;
-        const ramLeftY = ramCheckY + 80;
-        const ramRightX = ramCheckX + 120;
-        const ramRightY = ramCheckY + 80;
-        
-        drawLine(ramCheckX, ramCheckY + nodeHeight/2, ramLeftX, ramLeftY - nodeHeight/2, 'Oui');
-        drawLine(ramCheckX, ramCheckY + nodeHeight/2, ramRightX, ramRightY - nodeHeight/2, 'Non');
-        
-        const ramValue = parseFloat(params.ram_usage_avg) || 50;
-        if (ramValue <= 70) {
-            drawNode(ramLeftX, ramLeftY, `Prédiction:\n${Math.min(95, predictedLoad + 5)}%`, '#faad14', false);
-            drawNode(ramRightX, ramRightY, `Prédiction:\n${Math.min(99, predictedLoad + 15)}%`, '#ff4d4f', false);
-        } else {
-            drawNode(ramLeftX, ramLeftY, `Prédiction:\n${Math.min(90, predictedLoad + 10)}%`, '#ff4d4f', false);
-            drawNode(ramRightX, ramRightY, `Prédiction:\n${Math.min(99, predictedLoad + 20)}%`, '#ff4d4f', false);
-        }
-    }
-    
-    const rightX = startX + 180;
-    const rightY = startY + 100;
-    drawLine(startX, startY + nodeHeight/2, rightX, rightY - nodeHeight/2, 'Non');
-    
-    if (!isLeftBranch) {
-        if (predictedLoad < 70) {
-            drawNode(rightX, rightY, `Prédiction:\n${Math.min(95, predictedLoad + 10)}%`, '#faad14', false);
-        } else if (predictedLoad < 85) {
-            drawNode(rightX, rightY, `Prédiction:\n${Math.min(98, predictedLoad + 8)}%`, '#ff4d4f', false);
-        } else {
-            drawNode(rightX, rightY, `Prédiction:\n${Math.min(99, predictedLoad + 5)}%`, '#ff4d4f', false);
-        }
-    } else {
-        const visitorsCheckX = rightX;
-        const visitorsCheckY = rightY;
-        drawNode(visitorsCheckX, visitorsCheckY, `Visiteurs/jour\n≤ 20000?`, '#1890ff');
-        
-        const visitorsLeftX = visitorsCheckX - 120;
-        const visitorsLeftY = visitorsCheckY + 80;
-        const visitorsRightX = visitorsCheckX + 120;
-        const visitorsRightY = visitorsCheckY + 80;
-        
-        drawLine(visitorsCheckX, visitorsCheckY + nodeHeight/2, visitorsLeftX, visitorsLeftY - nodeHeight/2, 'Oui');
-        drawLine(visitorsCheckX, visitorsCheckY + nodeHeight/2, visitorsRightX, visitorsRightY - nodeHeight/2, 'Non');
-        
-        const visitorsValue = parseFloat(params.visitors_per_day) || 5000;
-        if (visitorsValue <= 20000) {
-            drawNode(visitorsLeftX, visitorsLeftY, `Prédiction:\n${predictedLoad}%`, '#52c41a', false);
-            drawNode(visitorsRightX, visitorsRightY, `Prédiction:\n${Math.min(95, predictedLoad + 15)}%`, '#faad14', false);
-        } else {
-            drawNode(visitorsLeftX, visitorsLeftY, `Prédiction:\n${Math.min(90, predictedLoad + 10)}%`, '#faad14', false);
-            drawNode(visitorsRightX, visitorsRightY, `Prédiction:\n${Math.min(99, predictedLoad + 25)}%`, '#ff4d4f', false);
-        }
-    }
-    
-    ctx.fillStyle = '#333';
-    ctx.font = '11px Inter';
-    ctx.fillText('🌳 Légende :', 20, height - 60);
-    ctx.fillStyle = '#52c41a';
-    ctx.fillText('● Optimal (<70%)', 20, height - 45);
-    ctx.fillStyle = '#faad14';
-    ctx.fillText('● Surveillance (70-85%)', 150, height - 45);
-    ctx.fillStyle = '#ff4d4f';
-    ctx.fillText('● Critique (>85%)', 320, height - 45);
-    ctx.fillStyle = '#1890ff';
-    ctx.fillText('● Nœud de décision', 490, height - 45);
-    
-    ctx.fillStyle = '#666';
-    ctx.font = '10px Inter';
-    ctx.fillText(`Score XGBoost: ${xgboostScore}% | Profondeur: 3 | Features: 15`, width - 220, height - 10);
-}
-
-function runXGBoostPrediction() {
-    const params = {
-        cpu_usage_avg: parseFloat(document.getElementById('cpu_usage_avg').value) || 0,
-        cpu_usage_peak: parseFloat(document.getElementById('cpu_usage_peak').value) || 0,
-        ram_usage_avg: parseFloat(document.getElementById('ram_usage_avg').value) || 0,
-        disk_io: parseFloat(document.getElementById('disk_io').value) || 0,
-        response_time: parseFloat(document.getElementById('response_time').value) || 0,
-        visitors_per_day: parseFloat(document.getElementById('visitors_per_day').value) || 0,
-        pageviews_per_day: parseFloat(document.getElementById('pageviews_per_day').value) || 0,
-        traffic_growth_rate: parseFloat(document.getElementById('traffic_growth_rate').value) || 0,
-        peak_hours_start: document.getElementById('peak_hours_start').value,
-        peak_hours_end: document.getElementById('peak_hours_end').value,
-        peak_hours: (() => {
-            const start = document.getElementById('peak_hours_start').value;
-            const end = document.getElementById('peak_hours_end').value;
-            if (start && end) {
-                const startHour = parseInt(start.split(':')[0]);
-                const endHour = parseInt(end.split(':')[0]);
-                return Math.max(1, endHour - startHour);
-            }
-            return 4;
-        })(),
-        plugin_count: parseFloat(document.getElementById('plugin_count').value) || 0,
-        heavy_plugins: Array.from(document.getElementById('heavy_plugins').selectedOptions).map(opt => opt.value).join(','),
-        php_version: document.getElementById('php_version').value,
-        cache_enabled: document.getElementById('cache_enabled').value,
-        cdn_enabled: document.getElementById('cdn_enabled').value,
-        wp_type: document.getElementById('wp_type').value
-    };
-    
-    if (!params.cpu_usage_avg || !params.ram_usage_avg || !params.visitors_per_day || !params.traffic_growth_rate || !params.plugin_count || !params.wp_type) {
-        showToast('❌ Veuillez remplir tous les champs obligatoires (*)', true);
-        return;
-    }
-    
-    let xgboostScore = 0;
-    
-    const cpuAvg = params.cpu_usage_avg / 100;
-    const cpuPeak = params.cpu_usage_peak / 100;
-    xgboostScore += cpuAvg * 15 + cpuPeak * 10;
-    xgboostScore += (params.ram_usage_avg / 100) * 13;
-    const visitorsNorm = Math.min(1, params.visitors_per_day / 50000);
-    xgboostScore += visitorsNorm * 10;
-    const growthNorm = Math.min(1, params.traffic_growth_rate / 100);
-    xgboostScore += growthNorm * 12;
-    const pluginNorm = Math.min(1, params.plugin_count / 50);
-    xgboostScore += pluginNorm * 6;
-    const heavyCount = params.heavy_plugins.split(',').filter(p => p).length;
-    xgboostScore += Math.min(1, heavyCount / 3) * 4;
-    if (params.cache_enabled !== 'oui') xgboostScore += 3;
-    if (params.cdn_enabled !== 'oui') xgboostScore += 3;
-    if (params.php_version === '7.4') xgboostScore += 5;
-    else if (params.php_version === '8.0') xgboostScore += 3;
-    else if (params.php_version === '8.1') xgboostScore += 1;
-    
-    xgboostScore = Math.min(100, Math.max(0, xgboostScore));
-    
-    let predictedLoad = (
-        params.cpu_usage_avg * 0.25 +
-        params.cpu_usage_peak * 0.15 +
-        params.ram_usage_avg * 0.20 +
-        (params.visitors_per_day / 50000) * 100 * 0.15 +
-        (params.traffic_growth_rate / 100) * 100 * 0.15 +
-        (params.plugin_count / 50) * 100 * 0.10
-    );
-    
-    if (params.wp_type === 'small') predictedLoad *= 1.3;
-    else if (params.wp_type === 'medium') predictedLoad *= 1.0;
-    else if (params.wp_type === 'performance') predictedLoad *= 0.7;
-    else if (params.wp_type === 'enterprise') predictedLoad *= 0.5;
-    
-    predictedLoad = Math.min(100, Math.max(0, Math.round(predictedLoad)));
-    
-    let saturationMonths = 0;
-    if (predictedLoad >= 90) {
-        saturationMonths = 0;
-    } else if (params.traffic_growth_rate > 0) {
-        saturationMonths = Math.ceil(Math.log(90 / Math.max(1, predictedLoad)) / Math.log(1 + params.traffic_growth_rate / 100));
-        if (params.wp_type === 'small') saturationMonths = Math.floor(saturationMonths * 0.7);
-        else if (params.wp_type === 'performance') saturationMonths = Math.ceil(saturationMonths * 1.3);
-    } else {
-        saturationMonths = 999;
-    }
-    saturationMonths = Math.max(0, saturationMonths);
-    
-    let status = '';
-    let statusColor = '';
-    if (predictedLoad >= 80 || saturationMonths <= 2) {
-        status = 'CRITIQUE';
-        statusColor = 'critical';
-    } else if (predictedLoad >= 70 || saturationMonths <= 6) {
-        status = 'SURVEILLANCE';
-        statusColor = 'warning';
-    } else {
-        status = 'OPTIMAL';
-        statusColor = 'optimal';
-    }
-    
-    let recommendation = '';
-    if (saturationMonths <= 1) {
-        recommendation = `🔴 **URGENT** : Saturation immédiate détectée (${predictedLoad}% charge). Migration vers un pack supérieur REQUISE dans les 48h.`;
-    } else if (saturationMonths <= 3) {
-        recommendation = `🟠 **CRITIQUE** : Saturation prévue dans ${saturationMonths} mois. Planifiez une migration vers ${params.wp_type === 'small' ? 'MEDIUM' : (params.wp_type === 'medium' ? 'PERFORMANCE' : 'ENTERPRISE')}.`;
-    } else if (saturationMonths <= 6) {
-        recommendation = `🟡 **ATTENTION** : Saturation dans ${saturationMonths} mois. Commencez à préparer la migration.`;
-    } else {
-        recommendation = `🟢 **OPTIMAL** : Infrastructure stable pour ${saturationMonths === 999 ? 'plus d\'un an' : saturationMonths + ' mois'}. Réévaluez dans 3 mois.`;
-    }
-    
-    if (params.cache_enabled !== 'oui') {
-        recommendation += `<br>💡 Activez un cache WordPress (Redis/LiteSpeed) pour réduire la charge serveur de 30-50%.`;
-    }
-    if (params.php_version === '7.4') {
-        recommendation += `<br>🐘 Mettez à jour PHP vers la version 8.2+ pour un gain de performances de 20-30%.`;
-    }
-    if (params.plugin_count > 30) {
-        recommendation += `<br>🔌 Trop de plugins actifs (${params.plugin_count}) - Nettoyez les plugins inutilisés.`;
-    }
-    
-    document.getElementById('xgboost-score-value').textContent = Math.round(xgboostScore) + '%';
-    document.getElementById('confidence-gauge').style.width = xgboostScore + '%';
-    document.getElementById('predicted-load-value').textContent = predictedLoad + '%';
-    document.getElementById('load-gauge').style.width = predictedLoad + '%';
-    document.getElementById('load-gauge').className = 'gauge-fill ' + getStatusColor(predictedLoad);
-    document.getElementById('load-status').innerHTML = status;
-    document.getElementById('load-status').className = 'status-badge ' + statusColor;
-    
-    document.getElementById('saturation-months').textContent = saturationMonths === 999 ? '∞' : saturationMonths;
-    const saturationCard = document.getElementById('saturation-card');
-    if (saturationMonths <= 2) {
-        saturationCard.className = 'saturation-card urgent';
-        document.getElementById('saturation-emoji').textContent = '🔴';
-    } else if (saturationMonths <= 6) {
-        saturationCard.className = 'saturation-card warning';
-        document.getElementById('saturation-emoji').textContent = '🟠';
-    } else {
-        saturationCard.className = 'saturation-card safe';
-        document.getElementById('saturation-emoji').textContent = '🟢';
-    }
-    
-    document.getElementById('report-text').innerHTML = recommendation;
-    updateFeatureImportance();
-    
-    drawDecisionTree(predictedLoad, Math.round(xgboostScore), {
-        cpu_usage_avg: params.cpu_usage_avg,
-        ram_usage_avg: params.ram_usage_avg,
-        traffic_growth_rate: params.traffic_growth_rate,
-        visitors_per_day: params.visitors_per_day,
-        plugin_count: params.plugin_count
-    });
-    
-    lastAnalysis = {
-        ...params,
-        predicted_load: predictedLoad,
-        xgboost_score: Math.round(xgboostScore),
-        predicted_saturation_months: saturationMonths,
-        status: status,
-        recommendation: recommendation.replace(/<br>/g, '\n'),
-        created_at: new Date().toISOString()
-    };
-    
-    updateLastAnalysisDisplay(lastAnalysis);
-    analysisGenerated = true;
-    
-    document.getElementById('no-data-message').style.display = 'none';
-    document.getElementById('results-content').style.display = 'block';
-    
-    showPredictionMessage();
-    showTab('resultats');
-    
-    setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 100);
-}
-
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     let tabToShow = urlParams.get('tab');
@@ -2295,7 +1939,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     showTab(tabToShow);
-    updateFeatureImportance();
 });
 </script>
 </body>
