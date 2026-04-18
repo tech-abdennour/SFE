@@ -40,6 +40,15 @@ services:
     networks:
       - sfe_net
 
+  python:
+    build: 
+      context: ./python
+    container_name: python_service
+    volumes:
+      - ./app:/var/www/html
+    networks:
+      - sfe_net
+
 volumes:
   db_data:
 
