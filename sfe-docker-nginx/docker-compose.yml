@@ -1,56 +1,53 @@
+version: "3.9"
+
 services:
 
   nginx:
     image: nginx:alpine
-    container_name: nginx_web
+    container_name: nginx
     ports:
       - "80:80"
     volumes:
       - ./app:/var/www/html
+      - ./python:/app   # 👈 IMPORTANT pour exposer les images ML
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - php
-    networks:
-      - sfe_net
 
   php:
-    build:
-      context: ./php
-    container_name: php_fpm
+    build: ./php
+    container_name: php
     volumes:
       - ./app:/var/www/html
-    networks:
-      - sfe_net
     depends_on:
-      - db
+      - mysql
 
-  db:
+  mysql:
     image: mariadb:10.11
-    container_name: mariadb_db
+    container_name: mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: app_db
-      MYSQL_USER: user
-      MYSQL_PASSWORD: userpass
+      MYSQL_DATABASE: appdb
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppass
     ports:
       - "3306:3306"
     volumes:
-      - db_data:/var/lib/mysql
-    networks:
-      - sfe_net
+      - mysql_data:/var/lib/mysql
 
-  python:
-    build: 
-      context: ./python
-    container_name: python_service
+  python_api:
+    build: ./python
+    container_name: python_api
+    restart: always
+    ports:
+      - "8000:8000"
     volumes:
-      - ./app:/var/www/html
-    networks:
-      - sfe_net
+      - ./python:/app
+      - ./app/Donnee_parametres:/app/Donnee_parametres
+      - ./python/service/analysis_exports:/app/service/analysis_exports
+    depends_on:
+      - mysql
 
 volumes:
-  db_data:
-
-networks:
-  sfe_net:
+  mysql_data:

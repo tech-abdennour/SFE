@@ -1,23 +1,16 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-# Installation des dépendances système (Graphviz pour les arbres)
-RUN apt-get update && apt-get install -y \
+WORKDIR /app
+
+# Installer graphviz pour les arbres XGBoost
+RUN apt-get update && apt-get install -y --no-install-recommends \
     graphviz \
     && rm -rf /var/lib/apt/lists/*
 
-# Définir le dossier de travail
-WORKDIR /var/www/html
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Installation des bibliothèques Python
-RUN pip install --no-cache-dir \
-    pandas \
-    numpy \
-    xgboost \
-    joblib \
-    scikit-learn \
-    matplotlib \
-    graphviz \
-    Pillow
+COPY . .
 
-# Commande par défaut (garder le conteneur actif)
-CMD ["tail", "-f", "/dev/null"]
+EXPOSE 8000
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
