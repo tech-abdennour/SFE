@@ -1,11 +1,17 @@
+import sys
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from script.cleanup import cleanup_json_files, cleanup_images
 import subprocess
 import os
 import json
 import glob
+# Ajouter le dossier script au path pour importer cleanup
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'script'))
+
 
 app = FastAPI()
 
