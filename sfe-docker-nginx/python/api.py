@@ -121,9 +121,25 @@ def predict_simple(cpu: float, ram: float, visitors: int, plugins: int, growth: 
 # =========================
 # PREDICT FROM FILE
 # =========================
+# =========================
+# PREDICT FROM FILE
+# =========================
 @app.get("/predict/from-file")
 def predict_from_file():
     try:
+        # =============================================
+        # 🔥 NETTOYAGE AVANT CHAQUE PRÉDICTION
+        # =============================================
+        print("=" * 50)
+        print("🧹 Nettoyage avant prédiction...")
+        cleanup_json_files()
+        cleanup_images()
+        print("✅ Nettoyage terminé")
+        print("=" * 50)
+        
+        # =============================================
+        # PRÉDICTION
+        # =============================================
         if not os.path.exists(PRED_SCRIPT):
             return {"status": "error", "message": f"Script introuvable: {PRED_SCRIPT}"}
 
