@@ -45,6 +45,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="logos.png">
     <title>Connexion - SFE Project</title>
     <script src="https://unpkg.com/feather-icons"></script>
     <style>

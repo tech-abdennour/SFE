@@ -687,10 +687,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 <label class="checkbox-item"><input type="checkbox" value="revslider">RevSlider</label>
                 <label class="checkbox-item"><input type="checkbox" value="gravityforms">Gravity Forms</label>
             </div></div>
-            <div class="form-group"><label>Version PHP</label><select id="php_version"><option value="none" selected>Choisir...</option><option value="7.4">PHP 7.4</option><option value="8.0">PHP 8.0</option><option value="8.1">PHP 8.1</option><option value="8.2">PHP 8.2</option><option value="8.3">PHP 8.3</option></select></div>
-            <div class="form-group"><label>Cache activé</label><select id="cache_enabled"><option value="none" selected>Choisir...</option><option value="oui">Oui</option><option value="non">Non</option></select></div>
-            <div class="form-group"><label>CDN activé</label><select id="cdn_enabled"><option value="none" selected>Choisir...</option><option value="oui">Oui</option><option value="non">Non</option></select></div>
-            <div class="form-group"><label>Pack WordPress <span class="required">*</span></label><select id="wp_type"><option value="none" selected>Choisir...</option><option value="small">SMALL</option><option value="medium">MEDIUM</option><option value="performance">PERFORMANCE</option></select></div>
+            <div class="form-group"><label>Version PHP</label><select id="php_version"><option value="none" selected>Choisir quelle version</option><option value="7.4">PHP 7.4</option><option value="8.0">PHP 8.0</option><option value="8.1">PHP 8.1</option><option value="8.2">PHP 8.2</option><option value="8.3">PHP 8.3</option></select></div>
+            <div class="form-group"><label>Cache activé</label><select id="cache_enabled"><option value="none" selected>Choisir quelle option</option><option value="oui">Oui</option><option value="non">Non</option></select></div>
+            <div class="form-group"><label>CDN activé</label><select id="cdn_enabled"><option value="none" selected>Choisir quelle option</option><option value="oui">Oui</option><option value="non">Non</option></select></div>
+            <div class="form-group"><label>Pack WordPress <span class="required">*</span></label><select id="wp_type"><option value="none" selected>Choisir quel pack</option><option value="small">SMALL</option><option value="medium">MEDIUM</option><option value="performance">PERFORMANCE</option></select></div>
         </div></div>
         <div class="action-center"><button class="btn-primary btn-launch" onclick="runAnalysis()"><span>🚀</span> LANCER L'ANALYSE Prédictif</button></div>
     </div>
