@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('Africa/Casablanca');
 
 // Vérification de la session utilisateur
 if (!isset($_SESSION['user'])) {
@@ -660,10 +661,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <!-- PARAMÈTRES -->
     <div id="dashboard" class="tab-content active-tab">
-        <div class="page-title"><h1>Analyse des paramètres</h1><p>Configuration pour l'analyse de charge WordPress</p></div>
+        <div class="page-title"><h1>Saisie des paramètres</h1><p>Configuration pour l'analyse de charge WordPress</p></div>
         <div class="param-section"><h4>📈 Trafic</h4><div class="grid-4">
             <div class="form-group"><label>Visiteurs / jour <span class="required">*</span></label><input type="number" id="visitors_per_day" placeholder="Ex: 5000"></div>
-            <div class="form-group"><label>Pages vues / jour</label><input type="number" id="pageviews_per_day" placeholder="Ex: 15000"></div>
+            <div class="form-group"><label>Pages vues / jour</label><input type="number" id="pageviews_per_day" placeholder="Ex: 150"></div>
             <div class="form-group"><label>Taux de croissance (%) <span class="required">*</span></label><input type="number" id="traffic_growth_rate" placeholder="Ex: 15"></div>
             <div class="form-group"><label>PICS HORAIRES</label><div class="time-range"><input type="time" id="peak_hours_start"><span class="time-separator">à</span><input type="time" id="peak_hours_end"></div></div>
         </div></div>
@@ -710,7 +711,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <!-- SAUVEGARDES JSON -->
     <div id="sauvegardes" class="tab-content">
-        <div class="page-header-with-action"><div class="page-title"><h1>💾 Sauvegardes JSON</h1><p>Résultats sauvegardés sans images</p></div></div>
+        <div class="page-header-with-action"><div class="page-title"><h1>💾 Sauvegardes des résultats</h1><p>Résultats sauvegardés sans images</p></div></div>
         <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
             <button class="btn-primary btn-save" id="saveResultBtn" onclick="saveCurrentResult()"><span>💾</span> Sauvegarder dans l'historique</button>
         </div>
@@ -724,7 +725,12 @@ document.addEventListener('DOMContentLoaded', function() {
             <?php if (count($history_predictions) > 0): ?>
                 <?php foreach ($history_predictions as $pred): ?>
                     <tr>
-                        <td class="td-date"><?php echo date('d/m/Y', strtotime($pred['created_at'])); ?></td>
+                        <td class="td-date">
+                            <?php echo date('d/m/Y', strtotime($pred['created_at'])); ?><br>
+                            <span style="font-size:11px;color:#888;display:block;line-height:1;">
+                                <?php echo date('H:i', strtotime($pred['created_at'])); ?>
+                            </span>
+                        </td>
                         <td><span class="badge-pack"><?php echo strtoupper($pred['wp_type'] ?? 'N/A'); ?></span></td>
                         <td class="td-number"><?php echo is_numeric($pred['visitors_per_day']) ? number_format((float)$pred['visitors_per_day']) : ''; ?></td>
                         <td class="td-growth"><?php echo $pred['traffic_growth_rate']; ?>%</td>
@@ -749,7 +755,12 @@ document.addEventListener('DOMContentLoaded', function() {
             <?php if (count($deleted_sauvegardes) > 0): ?>
                 <?php foreach ($deleted_sauvegardes as $del): ?>
                     <tr class="tr-deleted">
-                        <td class="td-date"><?php echo date('d/m/Y', strtotime($del['created_at'])); ?></td>
+                        <td class="td-date">
+                            <?php echo date('d/m/Y', strtotime($del['created_at'])); ?><br>
+                            <span style="font-size:11px;color:#888;display:block;line-height:1;">
+                                <?php echo date('H:i', strtotime($del['created_at'])); ?>
+                            </span>
+                        </td>
                         <td><?php echo strtoupper($del['wp_type'] ?? 'N/A'); ?></td>
                         <td class="td-number"><?php echo is_numeric($del['visitors_per_day']) ? number_format((float)$del['visitors_per_day']) : ''; ?></td>
                         <td class="td-growth"><?php echo $del['traffic_growth_rate']; ?>%</td>

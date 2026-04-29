@@ -5,7 +5,7 @@ PREDICT + GRAPHES + ARBRE PERSONNALISÉ
 Script unifié - Vala Bleu
 SATURATION EN JOURS ET MOIS
 """
-
+from matplotlib.patches import FancyBboxPatch, Circle
 import json
 import os
 import glob
@@ -76,7 +76,7 @@ def days_to_months_days(days):
         elif remaining_days == 0:
             text = f"{months} mois"
         else:
-            text = f"{months} mois {remaining_days} jour{'s' if remaining_days > 1 else ''}"
+            text = f"{months} mois et {remaining_days} jour{'s' if remaining_days > 1 else ''}"
         
         return months, remaining_days, text
 
@@ -358,13 +358,12 @@ def graph_correlation(features_dict):
 # 7. ARBRE PERSONNALISÉ AVEC FLÈCHES OUI/NON DYNAMIQUES (MODIFIÉ)
 # ============================================================================
 def graph_arbre(features_dict, result, json_file):
-    fig, ax = plt.subplots(figsize=(26, 16), dpi=150)
-    ax.set_xlim(-1, 14)
-    ax.set_ylim(0, 13)
+    fig, ax = plt.subplots(figsize=(22, 14), dpi=150)
+    ax.set_xlim(-1, 15)
+    ax.set_ylim(0, 14)
     ax.axis('off')
-    ax.set_facecolor('#f8f9fa')
-    
-    # Extraire les valeurs
+    ax.set_facecolor('#fdfdfd')
+    # --- Extraction des données ---
     cpu_val = features_dict.get('cpu_usage_avg', 0)
     ram_val = features_dict.get('ram_usage_avg', 0)
     vis_val = features_dict.get('visitors_per_day', 0)
@@ -372,89 +371,109 @@ def graph_arbre(features_dict, result, json_file):
     iops_val = features_dict.get('total_iops', 0)
     growth_val = features_dict.get('traffic_growth_rate', 0)
     cache_val = features_dict.get('cache_enabled', 0)
-    
-    # Déterminer le chemin (OUI = < seuil, NON = >= seuil)
+    # Logique de chemin
     cpu_ok = cpu_val < 65
     ram_ok = ram_val < 70
     vis_ok = vis_val < 15000
-    plug_ok = plug_val < 30
-    cache_ok = cache_val == 1
-    iops_ok = iops_val < 1000
-    growth_ok = growth_val < 20
-    
-    def node(x, y, label, value, threshold, active):
-        color = '#27ae60' if active else '#3498db'
-        circle = plt.Circle((x, y), 0.65, color=color, ec='white', linewidth=2, zorder=3)
+
+    def draw_node(x, y, title, val_str, threshold_str, active):
+        main_color = '#2ecc71' if active else '#3498db'
+        circle = Circle((x, y), 0.75, color=main_color, ec='white', lw=2, zorder=5)
         ax.add_patch(circle)
-        ax.text(x, y, f"{label}\n>{threshold}?\n({value})", ha='center', va='center', fontsize=7, fontweight='bold', color='white', zorder=4)
-    
-    def fleche(x1, y1, x2, y2, oui, label=None):
-        color = '#27ae60' if oui else '#bdc3c7'
-        lw = 3 if oui else 1.5
-        ax.annotate('', xy=(x2, y2+0.5), xytext=(x1, y1-0.5),
-                   arrowprops=dict(arrowstyle='->', color=color, lw=lw))
-        if label:
-            mx, my = (x1+x2)/2, (y1+y2)/2
-            ax.text(mx, my, label, ha='center', va='center', fontsize=10, fontweight='bold', color=color,
-                   bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor=color, alpha=0.9))
-    
-    # Nœuds
-    node(7, 11, "CPU", f"{cpu_val:.0f}%", 65, True)
-    node(3.5, 8.5, "RAM", f"{ram_val:.0f}%", 70, cpu_ok)
-    node(10.5, 8.5, "Visiteurs", f"{vis_val:.0f}", "15K", not cpu_ok)
-    node(1, 6, "Plugins", f"{plug_val}", 30, cpu_ok and ram_ok)
-    node(6, 6, "Cache", "Oui" if cache_val else "Non", "Actif?", cpu_ok and not ram_ok)
-    node(9.5, 6, "IOPS", f"{iops_val:.0f}", "1000", not cpu_ok and vis_ok)
-    node(13, 6, "Croissance", f"{growth_val:.0f}%", "20%", not cpu_ok and not vis_ok)
-    
-    # Flèches avec OUI/NON dynamiques
-    fleche(7, 10.5, 3.5, 9, cpu_ok, "OUI" if cpu_ok else "NON")
-    fleche(7, 10.5, 10.5, 9, not cpu_ok, "OUI" if not cpu_ok else "NON")
-    fleche(3.5, 8, 1, 6.5, ram_ok, "OUI" if ram_ok else "NON")
-    fleche(3.5, 8, 6, 6.5, not ram_ok, "OUI" if not ram_ok else "NON")
-    fleche(10.5, 8, 9.5, 6.5, vis_ok, "OUI" if vis_ok else "NON")
-    fleche(10.5, 8, 13, 6.5, not vis_ok, "OUI" if not vis_ok else "NON")
-    fleche(1, 5.5, 0, 3, plug_ok, "OUI" if plug_ok else "NON")
-    fleche(1, 5.5, 2.5, 3, not plug_ok, "OUI" if not plug_ok else "NON")
-    fleche(6, 5.5, 4.5, 3, cache_ok, "OUI" if cache_ok else "NON")
-    fleche(6, 5.5, 7.5, 3, not cache_ok, "OUI" if not cache_ok else "NON")
-    fleche(9.5, 5.5, 9.5, 3, iops_ok, "OUI" if iops_ok else "NON")
-    fleche(13, 5.5, 12, 3, growth_ok, "OUI" if growth_ok else "NON")
-    fleche(13, 5.5, 14, 3, not growth_ok, "OUI" if not growth_ok else "NON")
-    
-    # Feuilles
+        ax.text(x, y, f"{title}\n{val_str}\n(>{threshold_str}?)", 
+                ha='center', va='center', fontsize=9, fontweight='bold', 
+                color='white', zorder=6)
+
+    def draw_arrow(x1, y1, x2, y2, active, label):
+        # Si l'étiquette est 'OUI' (flèche vers bloc final), forcer la couleur verte
+        if label == "OUI":
+            color = '#2ecc71'
+            alpha = 1.0
+            lw = 3.5
+        else:
+            color = '#2ecc71' if active else '#d1d8e0'
+            alpha = 1.0 if active else 0.4
+            lw = 3.5 if active else 1.5
+        dx, dy = x2 - x1, y2 - y1
+        dist = np.sqrt(dx**2 + dy**2)
+        start_ratio = 0.8 / dist
+        end_ratio = 0.9 / dist
+        ax.annotate('', 
+                    xy=(x2 - dx*end_ratio, y2 - dy*end_ratio), 
+                    xytext=(x1 + dx*start_ratio, y1 + dy*start_ratio),
+                    arrowprops=dict(arrowstyle='-|>', color=color, lw=lw, 
+                                  mutation_scale=20, shrinkA=0, shrinkB=0),
+                    zorder=2, alpha=alpha)
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        ax.text(mx, my, label, fontsize=10, fontweight='bold', color=color,
+                bbox=dict(boxstyle='round,pad=0.2', fc='white', ec=color, alpha=0.9),
+                ha='center', va='center', zorder=10)
+
+    # --- Placement des Nœuds ---
+    draw_node(7, 11, "CPU", f"{cpu_val:.0f}%", "65", True)
+    draw_node(3.5, 8.5, "RAM", f"{ram_val:.0f}%", "70", cpu_ok)
+    draw_node(10.5, 8.5, "Visiteurs", f"{vis_val:.0f}", "15K", not cpu_ok)
+    draw_node(1.5, 6, "Plugins", f"{plug_val}", "30", cpu_ok and ram_ok)
+    draw_node(5.5, 6, "Cache", "OUI" if cache_val else "NON", "Actif", cpu_ok and not ram_ok)
+    draw_node(9.5, 6, "IOPS", f"{iops_val:.0f}", "1K", not cpu_ok and vis_ok)
+    draw_node(13, 6, "Growth", f"{growth_val:.0f}%", "20", not cpu_ok and not vis_ok)
+
+    # --- Flèches de décision ---
+    draw_arrow(7, 11, 3.5, 8.5, cpu_ok, "OUI")
+    draw_arrow(7, 11, 10.5, 8.5, not cpu_ok, "NON")
+    draw_arrow(3.5, 8.5, 1.5, 6, ram_ok, "OUI")
+    draw_arrow(3.5, 8.5, 5.5, 6, not ram_ok, "NON")
+    draw_arrow(10.5, 8.5, 9.5, 6, vis_ok, "OUI")
+    draw_arrow(10.5, 8.5, 13, 6, not vis_ok, "NON")
+
+    # --- Flèches vers les blocs de résultats (feuilles) ---
+    # Plugins -> CRITIQUE (OUI) ou URGENT (NON)
+    draw_arrow(1.5, 6, 0.5, 3, cpu_ok and ram_ok, "OUI")
+    draw_arrow(1.5, 6, 2.5, 3, not (cpu_ok and ram_ok), "NON")
+    # Cache -> SURVEILLANCE (OUI) ou ATTENTION (NON)
+    draw_arrow(5.5, 6, 4.5, 3, cpu_ok and not ram_ok and cache_val, "OUI")
+    draw_arrow(5.5, 6, 6.5, 3, cpu_ok and not ram_ok and not cache_val, "NON")
+    # IOPS -> STABLE (OUI)
+    draw_arrow(9.5, 6, 9.5, 3, not cpu_ok and vis_ok, "OUI")
+    # Growth -> OPTIMAL (OUI)
+    draw_arrow(13, 6, 12.5, 3, not cpu_ok and not vis_ok, "OUI")
+
+    # --- Feuilles (Résultats Finaux) ---
     leaves = [
-        (0, 2, 'CRITIQUE', '#e74c3c'),
-        (2.5, 2, 'URGENT', '#ff7a45'),
-        (4.5, 2, 'SURVEILLANCE', '#f39c12'),
-        (7.5, 2, 'ATTENTION', '#faad14'),
-        (9.5, 2, 'SURVEILLANCE', '#f39c12'),
-        (12, 2, 'CRITIQUE', '#e74c3c'),
-        (14, 2, 'OPTIMAL', '#27ae60'),
+        (0.5, 3, 'CRITIQUE', '#b71c1c'),      # rouge foncé
+        (2.5, 3, 'URGENT', '#e65100'),         # orange foncé
+        (4.5, 3, 'SURVEILLANCE', '#b59f00'),   # jaune foncé
+        (6.5, 3, 'ATTENTION', '#b26a00'),      # orange-brun foncé
+        (9.5, 3, 'STABLE', '#1a237e'),         # bleu foncé
+        (12.5, 3, 'OPTIMAL', '#006400')        # vert foncé
     ]
-    
-    result_idx = {'CRITIQUE': 0, 'URGENT': 1, 'SURVEILLANCE': 2, 'ATTENTION': 3, 'OPTIMAL': 6}
-    idx_res = result_idx.get(result['status'], 6)
-    
+    status_map = {'CRITIQUE': 0, 'URGENT': 1, 'SURVEILLANCE': 2, 'ATTENTION': 3, 'OPTIMAL': 5}
+    current_status = result.get('status', 'OPTIMAL')
+    win_idx = status_map.get(current_status, 5)
     for i, (lx, ly, name, color) in enumerate(leaves):
-        is_res = (i == idx_res)
-        alpha = 1.0 if is_res else 0.4
-        lw = 3 if is_res else 1
-        rect = FancyBboxPatch((lx-0.7, ly-0.5), 1.4, 1.0, boxstyle="round,pad=0.1", facecolor=color, ec='#2ecc71' if is_res else 'white', linewidth=lw, alpha=alpha, zorder=3)
+        is_winner = (i == win_idx)
+        ec_color = '#90EE90' if is_winner else 'white'
+        lw = 5 if is_winner else 1
+        alpha = 1.0 if is_winner else 0.9  # couleur moins pâle
+        rect = FancyBboxPatch((lx-0.8, ly-0.6), 1.6, 1.2, 
+                              boxstyle="round,pad=0.1", 
+                              facecolor=color, edgecolor=ec_color, 
+                              linewidth=lw, alpha=alpha, zorder=4)
         ax.add_patch(rect)
-        txt = f"{name}\n✅" if is_res else name
-        ax.text(lx, ly, txt, ha='center', va='center', fontsize=7, fontweight='bold', color='white', alpha=alpha, zorder=4)
-    
-    # Résumé (MODIFIÉ pour afficher jours/mois)
-    saturation_display = result.get('saturation_text', f"{result.get('saturation_months_raw', 0)} mois")
-    summary = f"📊 {result['status']} | Charge: {result['predicted_load']}% | Score: {result['xgboost_score']}% | Saturation: {saturation_display}"
-    ax.text(7, 12.3, summary, ha='center', va='center', fontsize=9, fontfamily='monospace',
-           bbox=dict(boxstyle='round', facecolor='white', edgecolor='#27ae60', alpha=0.95))
-    ax.set_title('🌳 ARBRE DE DÉCISION XGBOOST - OUI/NON DYNAMIQUES', fontsize=14, fontweight='bold', pad=15)
-    
+        txt = f"{name}\n[CORRECT]" if is_winner else name
+        ax.text(lx, ly, txt, ha='center', va='center', fontsize=9, 
+                fontweight='bold', color='black', alpha=alpha, zorder=6)
+
+    # --- Résumé et Titre ---
+    sat_txt = result.get('saturation_text', 'N/A')
+    summary = (f"⭐ STATUS: {current_status} | Charge: {result['predicted_load']}% | "
+               f"Confiance: {result['xgboost_score']}% | Saturation: {sat_txt}")
+    ax.text(7, 13, summary, ha='center', va='center', fontsize=12, fontweight='bold',
+            bbox=dict(boxstyle='round4,pad=0.6', fc='#f8f9fa', ec='#90EE90', lw=3))
+    ax.set_title('🌳 ANALYSE DÉCISIONNELLE XGBOOST', fontsize=18, fontweight='bold', pad=20, color='#2c3e50')
     plt.tight_layout()
-    path = str(OUTPUT_DIR / f'arbre_{TIMESTAMP}.png')
-    plt.savefig(path, dpi=200, bbox_inches='tight', facecolor='#f8f9fa')
+    path = str(OUTPUT_DIR / f"arbre_{TIMESTAMP}.png")
+    plt.savefig(path, facecolor='#fdfdfd', bbox_inches='tight')
     plt.close()
     return path
 
