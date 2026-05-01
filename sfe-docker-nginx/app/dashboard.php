@@ -15,100 +15,35 @@ $pdo = null;
 try {
     $pdo = new PDO("sqlite:" . $db_file);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
-    $pdo->exec("CREATE TABLE IF NOT EXISTS predictions (
-        id TEXT PRIMARY KEY,
-        created_at TEXT,
-        cpu_usage_avg TEXT,
-        cpu_usage_peak TEXT,
-        ram_usage_avg TEXT,
-        ram_usage_max TEXT,
-        disk_usage_avg TEXT,
-        disk_usage_max TEXT,
-        disk_read_iops TEXT,
-        disk_write_iops TEXT,
-        response_time TEXT,
-        visitors_per_day TEXT,
-        pageviews_per_day TEXT,
-        traffic_growth_rate TEXT,
-        peak_hours_start TEXT,
-        peak_hours_end TEXT,
-        peak_hours TEXT,
-        plugin_count TEXT,
-        heavy_plugins TEXT,
-        php_version TEXT,
-        cache_enabled TEXT,
-        cdn_enabled TEXT,
-        wp_type TEXT,
-        predicted_load TEXT,
-        predicted_saturation_months TEXT,
-        xgboost_score TEXT,
-        status TEXT,
-        recommendation TEXT,
-        save_type TEXT DEFAULT 'Manuel',
-        is_deleted INTEGER DEFAULT 0
-    )");
-    
-    $pdo->exec("CREATE TABLE IF NOT EXISTS saved_results (
-        id TEXT PRIMARY KEY,
-        created_at TEXT,
-        data_json TEXT,
-        save_type TEXT DEFAULT 'Sauvegarde JSON'
-    )");
-    
-    $pdo->exec("CREATE TABLE IF NOT EXISTS deleted_sauvegardes (
-        id TEXT PRIMARY KEY,
-        created_at TEXT,
-        cpu_usage_avg TEXT,
-        cpu_usage_peak TEXT,
-        ram_usage_avg TEXT,
-        ram_usage_max TEXT,
-        disk_usage_avg TEXT,
-        disk_usage_max TEXT,
-        disk_read_iops TEXT,
-        disk_write_iops TEXT,
-        response_time TEXT,
-        visitors_per_day TEXT,
-        pageviews_per_day TEXT,
-        traffic_growth_rate TEXT,
-        peak_hours_start TEXT,
-        peak_hours_end TEXT,
-        peak_hours TEXT,
-        plugin_count TEXT,
-        heavy_plugins TEXT,
-        php_version TEXT,
-        cache_enabled TEXT,
-        cdn_enabled TEXT,
-        wp_type TEXT,
-        predicted_load TEXT,
-        predicted_saturation_months TEXT,
-        xgboost_score TEXT,
-        status TEXT,
-        recommendation TEXT,
-        save_type TEXT DEFAULT 'Manuel',
-        deleted_at TEXT
-    )");
 } catch (Exception $e) {
     error_log("SQLite error: " . $e->getMessage());
 }
 
 // --- FONCTIONS DE PERSISTANCE ---
+
+// --- FONCTIONS DE PERSISTANCE ---
 function getPredictions($pdo) {
     if ($pdo === null) return [];
+    if (!isset($_SESSION['user'])) return [];
     try {
-        $stmt = $pdo->query("SELECT * FROM predictions WHERE is_deleted = 0 ORDER BY created_at DESC");
+        $stmt = $pdo->prepare("SELECT * FROM predictions WHERE is_deleted = 0 AND user = :user ORDER BY created_at DESC");
+        $stmt->execute([':user' => $_SESSION['user']]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
+        error_log('Erreur getPredictions: ' . $e->getMessage());
         return [];
     }
 }
 
 function getDeletedSauvegardes($pdo) {
     if ($pdo === null) return [];
+    if (!isset($_SESSION['user'])) return [];
     try {
-        $stmt = $pdo->query("SELECT * FROM deleted_sauvegardes ORDER BY deleted_at DESC");
+        $stmt = $pdo->prepare("SELECT * FROM deleted_sauvegardes WHERE user = :user ORDER BY deleted_at DESC");
+        $stmt->execute([':user' => $_SESSION['user']]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
+        error_log('Erreur getDeletedSauvegardes: ' . $e->getMessage());
         return [];
     }
 }
@@ -119,29 +54,31 @@ function getSavedResults($pdo) {
         $stmt = $pdo->query("SELECT * FROM saved_results ORDER BY created_at DESC");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
+        error_log('Erreur getSavedResults: ' . $e->getMessage());
         return [];
     }
 }
 
-function savePrediction($pdo, $data) {
-    if ($pdo === null) return false;
+function savePrediction($pdo, $data, &$errorMsg = null) {
+    if ($pdo === null) { $errorMsg = 'Connexion à la base de données impossible.'; return false; }
+    if (!isset($_SESSION['user'])) { $errorMsg = 'Utilisateur non connecté.'; return false; }
     try {
         $stmt = $pdo->prepare("INSERT INTO predictions (
-            id, created_at, cpu_usage_avg, cpu_usage_peak, ram_usage_avg, ram_usage_max, disk_usage_avg, disk_usage_max, disk_read_iops, disk_write_iops, response_time,
+            id, user, created_at, cpu_usage_avg, cpu_usage_peak, ram_usage_avg, ram_usage_max, disk_usage_avg, disk_usage_max, disk_read_iops, disk_write_iops, response_time,
             visitors_per_day, pageviews_per_day, traffic_growth_rate, peak_hours_start, peak_hours_end, peak_hours,
             plugin_count, heavy_plugins, php_version, cache_enabled, cdn_enabled,
             wp_type, predicted_load, predicted_saturation_months, xgboost_score,
             status, recommendation, save_type, is_deleted
         ) VALUES (
-            :id, :created_at, :cpu_usage_avg, :cpu_usage_peak, :ram_usage_avg, :ram_usage_max, :disk_usage_avg, :disk_usage_max, :disk_read_iops, :disk_write_iops, :response_time,
+            :id, :user, :created_at, :cpu_usage_avg, :cpu_usage_peak, :ram_usage_avg, :ram_usage_max, :disk_usage_avg, :disk_usage_max, :disk_read_iops, :disk_write_iops, :response_time,
             :visitors_per_day, :pageviews_per_day, :traffic_growth_rate, :peak_hours_start, :peak_hours_end, :peak_hours,
             :plugin_count, :heavy_plugins, :php_version, :cache_enabled, :cdn_enabled,
             :wp_type, :predicted_load, :predicted_saturation_months, :xgboost_score,
             :status, :recommendation, :save_type, 0
         )");
-        
         $stmt->execute([
             ':id' => $data['id'],
+            ':user' => $_SESSION['user'],
             ':created_at' => $data['created_at'],
             ':cpu_usage_avg' => $data['cpu_usage_avg'] ?? '',
             ':cpu_usage_peak' => $data['cpu_usage_peak'] ?? '',
@@ -173,6 +110,8 @@ function savePrediction($pdo, $data) {
         ]);
         return true;
     } catch (Exception $e) {
+        $errorMsg = $e->getMessage();
+        error_log('Erreur savePrediction: ' . $e->getMessage());
         return false;
     }
 }
@@ -206,15 +145,15 @@ function archivePrediction($pdo, $id) {
                 visitors_per_day, pageviews_per_day, traffic_growth_rate, peak_hours_start, peak_hours_end, peak_hours,
                 plugin_count, heavy_plugins, php_version, cache_enabled, cdn_enabled,
                 wp_type, predicted_load, predicted_saturation_months, xgboost_score,
-                status, recommendation, save_type, deleted_at
+                status, recommendation, save_type, deleted_at, user
             ) VALUES (
                 :id, :created_at, :cpu_usage_avg, :cpu_usage_peak, :ram_usage_avg, :ram_usage_max, :disk_usage_avg, :disk_usage_max, :disk_read_iops, :disk_write_iops, :response_time,
                 :visitors_per_day, :pageviews_per_day, :traffic_growth_rate, :peak_hours_start, :peak_hours_end, :peak_hours,
                 :plugin_count, :heavy_plugins, :php_version, :cache_enabled, :cdn_enabled,
                 :wp_type, :predicted_load, :predicted_saturation_months, :xgboost_score,
-                :status, :recommendation, :save_type, :deleted_at
+                :status, :recommendation, :save_type, :deleted_at, :user
             )");
-            
+
             $stmt2->execute([
                 ':id' => $pred['id'],
                 ':created_at' => $pred['created_at'],
@@ -245,7 +184,8 @@ function archivePrediction($pdo, $id) {
                 ':status' => $pred['status'],
                 ':recommendation' => $pred['recommendation'],
                 ':save_type' => $pred['save_type'] ?? 'Manuel',
-                ':deleted_at' => date('Y-m-d H:i:s')
+                ':deleted_at' => date('Y-m-d H:i:s'),
+                ':user' => $pred['user'] ?? ($_SESSION['user'] ?? null)
             ]);
             
             $stmt3 = $pdo->prepare("UPDATE predictions SET is_deleted = 1 WHERE id = :id");
@@ -395,14 +335,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
     header('Content-Type: application/json; charset=utf-8');
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
-    
-    if ($data && isset($_SESSION['user'])) {
+
+    // Sécurité : ne jamais renvoyer autre chose que du JSON
+    function ajax_json_response($arr) {
+        echo json_encode($arr);
+        exit();
+    }
+
+    if (!$data || !isset($_SESSION['user'])) {
+        error_log('AJAX: Données invalides ou utilisateur non connecté');
+        ajax_json_response(['success' => false, 'error' => 'Données invalides ou utilisateur non connecté']);
+    }
+
+    try {
         if (isset($data['action'])) {
-            if ($data['action'] === 'delete' && isset($data['delete_id'])) { echo json_encode(['success' => deletePermanently($pdo, $data['delete_id'])]); exit(); }
-            if ($data['action'] === 'archive' && isset($data['archive_id'])) { echo json_encode(['success' => archivePrediction($pdo, $data['archive_id'])]); exit(); }
-            if ($data['action'] === 'restore' && isset($data['restore_id'])) { echo json_encode(['success' => restorePrediction($pdo, $data['restore_id'])]); exit(); }
-            if ($data['action'] === 'empty_trash') { echo json_encode(['success' => emptyTrash($pdo)]); exit(); }
-            if ($data['action'] === 'save_json' && isset($data['result_data'])) { echo json_encode(['success' => saveResultJson($pdo, $data['result_data'])]); exit(); }
+            if ($data['action'] === 'delete' && isset($data['delete_id'])) {
+                ajax_json_response(['success' => deletePermanently($pdo, $data['delete_id'])]);
+            }
+            if ($data['action'] === 'archive' && isset($data['archive_id'])) {
+                ajax_json_response(['success' => archivePrediction($pdo, $data['archive_id'])]);
+            }
+            if ($data['action'] === 'restore' && isset($data['restore_id'])) {
+                ajax_json_response(['success' => restorePrediction($pdo, $data['restore_id'])]);
+            }
+            if ($data['action'] === 'empty_trash') {
+                ajax_json_response(['success' => emptyTrash($pdo)]);
+            }
+            if ($data['action'] === 'save_json' && isset($data['result_data'])) {
+                ajax_json_response(['success' => saveResultJson($pdo, $data['result_data'])]);
+            }
         }
         if (isset($data['predicted_load'])) {
             $prediction = [
@@ -422,18 +383,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                 'xgboost_score' => $data['xgboost_score'] ?? '', 'status' => $data['status'] ?? '',
                 'recommendation' => $data['recommendation'] ?? '', 'save_type' => 'Manuel'
             ];
-            echo json_encode(['success' => savePrediction($pdo, $prediction)]);
-            exit();
+            $errorMsg = null;
+            $success = savePrediction($pdo, $prediction, $errorMsg);
+            if ($success) {
+                ajax_json_response(['success' => true]);
+            } else {
+                ajax_json_response(['success' => false, 'error' => $errorMsg ?: 'Erreur inconnue']);
+            }
         }
+        // Sauvegarde brute des paramètres
         $jsonFolder = __DIR__ . '/Donnee_parametres';
         if (!file_exists($jsonFolder)) mkdir($jsonFolder, 0777, true);
         $filename = $jsonFolder . '/parameters_' . date('Y-m-d_H-i-s') . '.json';
         file_put_contents($filename, json_encode(['timestamp' => date('Y-m-d H:i:s'), 'user' => $_SESSION['user'], 'parameters' => $data], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        echo json_encode(['status' => 'success', 'message' => 'Paramètres sauvegardés']);
-        exit();
+        ajax_json_response(['status' => 'success', 'message' => 'Paramètres sauvegardés']);
+    } catch (Exception $e) {
+        error_log('Erreur AJAX: ' . $e->getMessage());
+        ajax_json_response(['success' => false, 'error' => $e->getMessage()]);
     }
-    echo json_encode(['success' => false]);
-    exit();
 }
 
 // Déconnexion
@@ -587,7 +554,7 @@ function runAnalysis() {
 function saveCurrentResult() {
     if (!currentPrediction) { showToast('Aucun résultat', true); return; }
     var btn = document.getElementById('saveResultBtn');
-    btn.disabled = true; btn.innerHTML = 'Sauvegarde...';
+    btn.disabled = true; btn.innerHTML = 'Sauvegarder...';
     // Récupérer les paramètres du formulaire
     var params = getFormParams();
     // Fusionner les paramètres et le résultat de l'API
@@ -599,8 +566,20 @@ function saveCurrentResult() {
     })
     .then(function(r) { return r.json(); })
     .then(function(res) { 
-        if (res.success) { showToast('Analyse sauvegardée !'); setTimeout(function() { location.reload(); }, 1500); }
-        else { showToast('Erreur', true); btn.disabled = false; btn.innerHTML = 'Sauvegarder dans l\'historique'; }
+        if (res.success) {
+            showToast('Analyse sauvegardée !');
+            console.log('SAUVEGARDE REUSSIE');
+            setTimeout(function() { location.reload(); }, 1500);
+        } else {
+            showToast('Erreur', true);
+            btn.disabled = false;
+            btn.innerHTML = 'Sauvegarder dans l\'historique';
+            if (res.error) {
+                console.log('SAUVEGARDE ECHOUEE :', res.error);
+            } else {
+                console.log('SAUVEGARDE ECHOUEE : Erreur inconnue', res);
+            }
+        }
     });
 }
 
@@ -644,7 +623,6 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </head>
 <body>
-
 <div class="sidebar">
     <div class="sidebar-header"><h2>VALA BLEU</h2><p>Dashboard</p></div>
     <nav class="sidebar-nav">
@@ -657,6 +635,11 @@ document.addEventListener('DOMContentLoaded', function() {
     <a href="?logout=1" class="logout-link"><span class="menu-icon">🚪</span><span>Déconnexion</span></a>
 </div>
 
+
+    <!-- BARRE UTILISATEUR -->
+    <div style="position:absolute;top:10px;right:20px;background:linear-gradient(135deg,#1e293b,#334155);color:#fff;padding:8px 20px;border-radius:8px;font-size:0.98rem;box-shadow:0 2px 16px rgba(0,0,0,0.22);z-index:2000;display:flex;align-items:center;gap:8px;pointer-events:auto;">
+        <span>👤 Connecté en tant que <strong><?php echo htmlspecialchars((string)($_SESSION['user'] ?? '')); ?></strong></span>
+    </div>
 <div class="main-content">
 
     <!-- PARAMÈTRES -->
@@ -712,15 +695,20 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- SAUVEGARDES JSON -->
     <div id="sauvegardes" class="tab-content">
         <div class="page-header-with-action"><div class="page-title"><h1>💾 Sauvegardes des résultats</h1><p>Résultats sauvegardés sans images</p></div></div>
-        <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-            <button class="btn-primary btn-save" id="saveResultBtn" onclick="saveCurrentResult()"><span>💾</span> Sauvegarder dans l'historique</button>
-        </div>
+            <div class="card" style="display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+                <button class="btn-primary btn-save" id="saveResultBtn" onclick="saveCurrentResult()">
+                    <span>💾</span> Sauvegarder dans l'historique
+                </button>
+            </div>
         <!-- Tableau des sauvegardes supprimé comme demandé -->
     </div>
 
     <!-- HISTORIQUE -->
     <div id="historique" class="tab-content">
-        <div class="page-header-with-action"><div class="page-title"><h1>Historique des analyses</h1><p>Toutes les analyses sauvegardées</p></div><a href="?export_full_csv=1" class="btn-export-csv"><span>📥</span> Exporter tout en CSV</a></div>
+        <div class="page-header-with-action"><div class="page-title"><h1>Historique des analyses</h1><p>Toutes les analyses sauvegardées</p></div>
+        <div style="height: 5px; width: 50%;"></div>
+        <a href="?export_full_csv=1" class="btn-export-csv">
+            <span>📥</span> Exporter tout en CSV</a></div>
         <div class="config-card"><div class="table-wrapper"><table class="history-table"><thead><tr><th>Date</th><th>Pack</th><th>Visiteurs/j</th><th>Croissance</th><th>CPU/RAM</th><th>Plugins</th><th>Score</th><th>Charge</th><th>Statut</th><th>Action</th></tr></thead><tbody>
             <?php if (count($history_predictions) > 0): ?>
                 <?php foreach ($history_predictions as $pred): ?>
@@ -750,7 +738,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <!-- CORBEILLE -->
     <div id="corbeille" class="tab-content">
-        <div class="page-header-with-action"><div class="page-title"><h1>Corbeille</h1><p>Éléments supprimés</p></div><button class="btn-danger" onclick="viderCorbeille()"><span>🗑️</span> Vider la corbeille</button></div>
+        
+        <div class="page-header-with-action">
+            
+            <div class="page-title"><h1>Corbeille</h1><p>Éléments supprimés</p></div>
+            <div style="height: 20px; width: 80%;"></div>
+                <button class="btn-danger" onclick="viderCorbeille()"><span>🗑️</span> Vider la corbeille</button></div>
         <div class="config-card"><div class="table-wrapper"><table class="history-table"><thead><tr><th>Date</th><th>Pack</th><th>Visiteurs/j</th><th>Croissance</th><th>CPU/RAM</th><th>Plugins</th><th>Score</th><th>Charge</th><th>Statut</th><th>Action</th></tr></thead><tbody>
             <?php if (count($deleted_sauvegardes) > 0): ?>
                 <?php foreach ($deleted_sauvegardes as $del): ?>
