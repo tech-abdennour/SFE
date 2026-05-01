@@ -1,18 +1,16 @@
 📦 Installation et exécution du projet  
 1. Installer Docker  
-
 Assurez-vous que Docker est installé sur votre machine.  
-
 2. Cloner le projet  
-  git clone https://github.com/tech-abdennour/SFE.git  
-  cd SFE/sfe-docker-nginx  
+  -git clone https://github.com/tech-abdennour/SFE.git  
+  -cd SFE/sfe-docker-nginx  
 3. Lancer les services  
   docker compose up -d  
 4. Vérifier les conteneurs  
   docker ps  
 5. Accès aux services  
-  Frontend : http://localhost  
-  Backend : http://localhost:8080  
+  -Frontend : http://localhost  
+  -Backend : http://localhost:8080  
 6. Scripts disponibles  
 - Dans le dossier SFE/script, vous pouvez exécuter :  
   ./backups.sh  
