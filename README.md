@@ -11,9 +11,8 @@ Assurez-vous que Docker est installé sur votre machine.
 5. Accès aux services  
   -Frontend : http://localhost  
   -Backend : http://localhost:8080  
-6. Scripts disponibles
-Dans le dossier SFE/script, vous pouvez exécuter avec git bash sur windows ou terminale linux par défaut  :
-- ./backup.sh
-- ./healthcheck.sh
-  - backup.sh : permet de faire des sauvegardes  
-  - healthcheck.sh : vérifie l’état des services
+6. Scripts disponibles Dans le dossier SFE/script, vous pouvez exécuter avec Git Bash sur Windows ou le terminal Linux par défaut :  
+-./backup.sh  
+-./healthcheck.sh  
+    - backup.sh : permet de faire des sauvegardes  
+    - healthcheck.sh : vérifie l’état des services  
