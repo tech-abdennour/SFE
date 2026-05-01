@@ -12,8 +12,8 @@ Assurez-vous que Docker est installé sur votre machine.
   -Frontend : http://localhost  
   -Backend : http://localhost:8080  
 6. Scripts disponibles  
-- Dans le dossier SFE/script, vous pouvez exécuter :  
-  ./backups.sh  
-  ./healthcheck.sh  
-  backups.sh : permet de faire des sauvegardes  
-  healthcheck.sh : vérifie l’état des services  
+  -Dans le dossier SFE/script, vous pouvez exécuter :  
+    ./backup.sh  
+    ./healthcheck.sh  
+    backup.sh : permet de faire des sauvegardes  
+    healthcheck.sh : vérifie l’état des services  
