@@ -11,7 +11,7 @@ Assurez-vous que Docker est installé sur votre machine.
 5. Accès aux services  
   -Frontend : http://localhost  
   -Backend :  http://localhost:8000/docs
-6. Scripts disponibles Dans le dossier SFE/sfe-docker-nginx/script, vous pouvez exécuter avec Git Bash sur Windows ou le terminal Linux par défaut :  
+6. Scripts disponibles Dans le dossier SFE/sfe-docker-nginx/scripts, vous pouvez exécuter avec Git Bash sur Windows ou le terminal Linux par défaut :  
 +./backup.sh  
 +./healthcheck.sh  
     - backup.sh : permet de faire des sauvegardes  
