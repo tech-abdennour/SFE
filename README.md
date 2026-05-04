@@ -16,4 +16,4 @@ Assurez-vous que Docker est installé sur votre machine.
 +./healthcheck.sh  
     - backup.sh : permet de faire des sauvegardes  
     - healthcheck.sh : vérifie l’état des services  
-    ## 
+    defe
