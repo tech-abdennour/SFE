@@ -364,6 +364,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             if ($data['action'] === 'save_json' && isset($data['result_data'])) {
                 ajax_json_response(['success' => saveResultJson($pdo, $data['result_data'])]);
             }
+            // Nouvelle action pour générer un JSON dans Donnes_Parameters
+            if ($data['action'] === 'generate_json' && isset($data['json_data'])) {
+                $jsonFolder = realpath(__DIR__ . '/../python/Donnes_Parameters');
+                if ($jsonFolder === false) {
+                    $jsonFolder = __DIR__ . '/../python/Donnes_Parameters';
+                    mkdir($jsonFolder, 0777, true);
+                }
+                $filename = $jsonFolder . '/prediction_' . date('Y-m-d_H-i-s') . '.json';
+                $ok = file_put_contents($filename, json_encode($data['json_data'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                if ($ok !== false) {
+                    ajax_json_response(['success' => true, 'filename' => basename($filename)]);
+                } else {
+                    ajax_json_response(['success' => false, 'error' => 'Erreur lors de la génération du JSON']);
+                }
+            }
         }
         if (isset($data['predicted_load'])) {
             $prediction = [
@@ -542,6 +557,21 @@ function runAnalysis() {
                 showToast('Prédiction terminée !');
                 // Stocker le résultat dans sessionStorage pour accès depuis Sauvegardes
                 sessionStorage.setItem('lastPrediction', JSON.stringify(currentPrediction));
+                // Générer le JSON côté serveur dans Donnes_Parameters
+                fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ action: 'generate_json', json_data: currentPrediction })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res.success) {
+                        showToast('Fichier JSON généré dans Donnes_Parameters !');
+                    } else {
+                        showToast('Erreur génération JSON', true);
+                    }
+                })
+                .catch(function() { showToast('Erreur génération JSON', true); });
             } else {
                 showToast('Erreur API', true);
                 document.getElementById('noResults').style.display = 'block';
