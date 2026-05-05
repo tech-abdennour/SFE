@@ -364,11 +364,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             if ($data['action'] === 'save_json' && isset($data['result_data'])) {
                 ajax_json_response(['success' => saveResultJson($pdo, $data['result_data'])]);
             }
-            // Nouvelle action pour générer un JSON dans Donnes_Parameters
+            // Nouvelle action pour générer un JSON dans Donnee_parametres (UN SEUL DOSSIER)
             if ($data['action'] === 'generate_json' && isset($data['json_data'])) {
-                $jsonFolder = realpath(__DIR__ . '/../python/Donnes_Parameters');
+                $jsonFolder = realpath(__DIR__ . '/../python/Donnee_parametres');
                 if ($jsonFolder === false) {
-                    $jsonFolder = __DIR__ . '/../python/Donnes_Parameters';
+                    $jsonFolder = __DIR__ . '/../python/Donnee_parametres';
                     mkdir($jsonFolder, 0777, true);
                 }
                 $filename = $jsonFolder . '/prediction_' . date('Y-m-d_H-i-s') . '.json';
@@ -407,9 +407,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             }
         }
         // Sauvegarde brute des paramètres
-        $jsonFolder = realpath(__DIR__ . '/../python/Donnes_parameters');
+        $jsonFolder = realpath(__DIR__ . '/../python/Donnee_parametres');
         if ($jsonFolder === false) {
-            $jsonFolder = __DIR__ . '/../python/Donnes_parameters';
+            $jsonFolder = __DIR__ . '/../python/Donnee_parametres';
             mkdir($jsonFolder, 0777, true);
         }
         $filename = $jsonFolder . '/parameters_' . date('Y-m-d_H-i-s') . '.json';
@@ -508,9 +508,27 @@ function validateParams(params) {
     return true;
 }
 
-function saveParamsToJSON(params) {
-    return fetch(window.location.pathname, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: JSON.stringify(params) })
-    .then(function(r) { return r.json(); }).then(function(d) { return d.status === 'success'; }).catch(function() { return false; });
+
+// Nouvelle fonction pour sauvegarder les paramètres dans l'API Python
+function saveParamsToPythonAPI(params) {
+    return fetch("http://localhost:8000/save-parameters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.status === "success") {
+            showToast("Paramètres sauvegardés dans Donnee_parametres !");
+        } else {
+            showToast("Erreur sauvegarde API Python", true);
+        }
+        return res.status === "success";
+    })
+    .catch(function() {
+        showToast("Erreur API Python", true);
+        return false;
+    });
 }
 
 function displayImages(images) {
@@ -521,7 +539,9 @@ function displayImages(images) {
     var html = '';
     for (var i = 0; i < images.length; i++) {
         var img = images[i];
-        html += '<div class="image-card"><h4>' + (names[img.type] || img.type) + '</h4><img src="' + img.url + '" onclick="window.open(\'' + img.url + '\',\'_blank\')"><p class="image-name">' + img.url.split('/').pop() + '</p></div>';
+        // Correction : toujours préfixer par http://localhost:8000 si ce n'est pas déjà un lien complet
+        var imgUrl = img.url.startsWith('http') ? img.url : ('http://localhost:8000' + img.url);
+        html += '<div class="image-card"><h4>' + (names[img.type] || img.type) + '</h4><img src="' + imgUrl + '" onclick="window.open(\'' + imgUrl + '\',\'_blank\')"><p class="image-name">' + imgUrl.split('/').pop() + '</p></div>';
     }
     display.innerHTML = html;
     container.style.display = 'block';
@@ -544,7 +564,8 @@ function runAnalysis() {
     document.getElementById('resultsContainer').style.display = 'none';
     document.getElementById('noResults').style.display = 'none';
     showTab('resultats');
-    saveParamsToJSON(params).then(function() {
+    // Sauvegarde dans l'API Python
+    saveParamsToPythonAPI(params).then(function() {
         fetch("http://localhost:8000/predict/from-file")
         .then(function(r) { return r.json(); })
         .then(function(res) {
@@ -557,21 +578,6 @@ function runAnalysis() {
                 showToast('Prédiction terminée !');
                 // Stocker le résultat dans sessionStorage pour accès depuis Sauvegardes
                 sessionStorage.setItem('lastPrediction', JSON.stringify(currentPrediction));
-                // Générer le JSON côté serveur dans Donnes_Parameters
-                fetch(window.location.pathname, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body: JSON.stringify({ action: 'generate_json', json_data: currentPrediction })
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(res) {
-                    if (res.success) {
-                        showToast('Fichier JSON généré dans Donnes_Parameters !');
-                    } else {
-                        showToast('Erreur génération JSON', true);
-                    }
-                })
-                .catch(function() { showToast('Erreur génération JSON', true); });
             } else {
                 showToast('Erreur API', true);
                 document.getElementById('noResults').style.display = 'block';
