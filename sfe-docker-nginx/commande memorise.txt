@@ -32,5 +32,4 @@ Maintenant que ton service Python est séparé du service PHP, si tu veux que to
 2.	Soit (le plus simple) tu continues d'installer Python sur le conteneur PHP comme on le faisait au début, et tu gardes le conteneur Python juste pour tes tests et tes générations d'arbres complexes.
 Qu'est-ce que tu essaies de faire tourner comme script maintenant ?
 
-# TEST
 
