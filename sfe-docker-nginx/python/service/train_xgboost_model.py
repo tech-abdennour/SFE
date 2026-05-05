@@ -35,7 +35,7 @@ warnings.filterwarnings('ignore')
 BASE_DIR = Path(__file__).parent
 MODELS_DIR = BASE_DIR.parent / "models"
 OUTPUT_DIR = BASE_DIR / "analysis_exports"
-PARAMS_DIR = BASE_DIR.parent / "Donnes_parameters"
+PARAMS_DIR = BASE_DIR.parent / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 PARAMS_DIR.mkdir(parents=True, exist_ok=True)
