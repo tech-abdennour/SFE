@@ -215,24 +215,25 @@ function restorePrediction($pdo, $id) {
         $stmt = $pdo->prepare("SELECT * FROM deleted_sauvegardes WHERE id = :id");
         $stmt->execute([':id' => $id]);
         $pred = $stmt->fetch(PDO::FETCH_ASSOC);
-        
         if ($pred) {
+            // Générer un nouvel id pour éviter les conflits de clé primaire
+            $new_id = uniqid();
             $stmt2 = $pdo->prepare("INSERT INTO predictions (
-                id, created_at, cpu_usage_avg, cpu_usage_peak, ram_usage_avg, ram_usage_max, disk_usage_avg, disk_usage_max, disk_read_iops, disk_write_iops, response_time,
+                id, user, created_at, cpu_usage_avg, cpu_usage_peak, ram_usage_avg, ram_usage_max, disk_usage_avg, disk_usage_max, disk_read_iops, disk_write_iops, response_time,
                 visitors_per_day, pageviews_per_day, traffic_growth_rate, peak_hours_start, peak_hours_end, peak_hours,
                 plugin_count, heavy_plugins, php_version, cache_enabled, cdn_enabled,
                 wp_type, predicted_load, predicted_saturation_months, xgboost_score,
                 status, recommendation, save_type, is_deleted
             ) VALUES (
-                :id, :created_at, :cpu_usage_avg, :cpu_usage_peak, :ram_usage_avg, :ram_usage_max, :disk_usage_avg, :disk_usage_max, :disk_read_iops, :disk_write_iops, :response_time,
+                :id, :user, :created_at, :cpu_usage_avg, :cpu_usage_peak, :ram_usage_avg, :ram_usage_max, :disk_usage_avg, :disk_usage_max, :disk_read_iops, :disk_write_iops, :response_time,
                 :visitors_per_day, :pageviews_per_day, :traffic_growth_rate, :peak_hours_start, :peak_hours_end, :peak_hours,
                 :plugin_count, :heavy_plugins, :php_version, :cache_enabled, :cdn_enabled,
                 :wp_type, :predicted_load, :predicted_saturation_months, :xgboost_score,
                 :status, :recommendation, :save_type, 0
             )");
-            
             $stmt2->execute([
-                ':id' => $pred['id'],
+                ':id' => $new_id,
+                ':user' => $_SESSION['user'],
                 ':created_at' => $pred['created_at'],
                 ':cpu_usage_avg' => $pred['cpu_usage_avg'],
                 ':cpu_usage_peak' => $pred['cpu_usage_peak'],
@@ -262,13 +263,13 @@ function restorePrediction($pdo, $id) {
                 ':recommendation' => $pred['recommendation'],
                 ':save_type' => $pred['save_type'] ?? 'Manuel'
             ]);
-            
             $stmt3 = $pdo->prepare("DELETE FROM deleted_sauvegardes WHERE id = :id");
             $stmt3->execute([':id' => $id]);
             return true;
         }
         return false;
     } catch (Exception $e) {
+        error_log('Erreur restorePrediction: ' . $e->getMessage());
         return false;
     }
 }
@@ -367,9 +368,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
             // Nouvelle action pour générer un JSON dans Donnee_parametres (UN SEUL DOSSIER)
             if ($data['action'] === 'generate_json' && isset($data['json_data'])) {
                 $jsonFolder = realpath(__DIR__ . '/../python/Donnee_parametres');
-                if ($jsonFolder === false) {
-                    $jsonFolder = __DIR__ . '/../python/Donnee_parametres';
-                    mkdir($jsonFolder, 0777, true);
+                if ($jsonFolder === false || !is_dir($jsonFolder)) {
+                    ajax_json_response(['success' => false, 'error' => 'Le dossier Donnee_parametres est introuvable.']);
                 }
                 $filename = $jsonFolder . '/prediction_' . date('Y-m-d_H-i-s') . '.json';
                 $ok = file_put_contents($filename, json_encode($data['json_data'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
@@ -408,9 +408,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
         }
         // Sauvegarde brute des paramètres
         $jsonFolder = realpath(__DIR__ . '/../python/Donnee_parametres');
-        if ($jsonFolder === false) {
-            $jsonFolder = __DIR__ . '/../python/Donnee_parametres';
-            mkdir($jsonFolder, 0777, true);
+        if ($jsonFolder === false || !is_dir($jsonFolder)) {
+            ajax_json_response(['success' => false, 'error' => 'Le dossier Donnee_parametres est introuvable.']);
         }
         $filename = $jsonFolder . '/parameters_' . date('Y-m-d_H-i-s') . '.json';
         file_put_contents($filename, json_encode(['timestamp' => date('Y-m-d H:i:s'), 'user' => $_SESSION['user'], 'parameters' => $data], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
@@ -502,8 +501,15 @@ function getFormParams() {
 
 function validateParams(params) {
     if (!params.cpu_usage_avg || !params.cpu_usage_peak || !params.ram_usage_avg || !params.ram_usage_max || !params.visitors_per_day || !params.traffic_growth_rate || !params.plugin_count || !params.wp_type) {
-        showToast('Veuillez remplir tous les champs obligatoires (*)', true);
+        showToast('Champs * requis', true);
         return false;
+    }
+    // Vérifie qu'aucune valeur n'est négative
+    for (var key in params) {
+        if (typeof params[key] === 'number' && params[key] < 0) {
+            showToast('Valeurs négatives interdites', true);
+            return false;
+        }
     }
     return true;
 }
@@ -722,7 +728,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <div id="resultats" class="tab-content">
         <div class="page-title"><h1>Résultats de l'analyse</h1><p>Prédiction basée sur les paramètres fournis</p></div>
         <div id="loadingResults" class="card loading-card" style="display:none;"><div class="loading-spinner">⏳</div><p>Calcul en cours...</p></div>
-        <div id="noResults" class="card empty-state"><div class="empty-icon">📭</div><h3>Aucune analyse générée</h3><p>Remplissez les paramètres et cliquez sur "LANCER L'ANALYSE"</p></div>
+        <div id="noResults" class="card empty-state"><div class="empty-icon"><img src="icons/resultas.png" alt="Aucun résultat" style="width:64px;height:64px;"></div><h3>Aucune analyse générée</h3><p>Remplissez les paramètres et cliquez sur "LANCER L'ANALYSE"</p></div>
         <div id="resultsContainer" style="display:none;">
             <div class="card"><h3>📊 Scores de Performance</h3><div id="scoresDisplay"></div></div>
             <div class="card"><h3>💡 Recommandation</h3><div id="recommendationDisplay"></div></div>
@@ -770,7 +776,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </tr>
                 <?php endforeach; ?>
             <?php else: ?>
-                <tr><td colspan="10" class="empty-table-cell"><div class="empty-icon">📭</div><p>Aucune analyse sauvegardée</p></td></tr>
+                <tr><td colspan="10" class="empty-table-cell"><div class="empty-icon"><img src="icons/historique.png" alt="Aucun historique" style="width:64px;height:64px;"></div><p>Aucune analyse sauvegardée</p></td></tr>
             <?php endif; ?>
         </tbody></table></div></div>
     </div>
@@ -805,7 +811,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </tr>
                 <?php endforeach; ?>
             <?php else: ?>
-                <tr><td colspan="10" class="empty-table-cell"><div class="empty-icon">📭</div><p>Corbeille vide</p></td></tr>
+                <tr><td colspan="10" class="empty-table-cell"><div class="empty-icon"><img src="icons/corbeille.png" alt="Corbeille vide" style="width:64px;height:64px;"></div><p>Corbeille vide</p></td></tr>
             <?php endif; ?>
         </tbody></table></div></div>
     </div>

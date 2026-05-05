@@ -1,0 +1,23 @@
+{
+  "cpu_usage_avg": 22,
+  "cpu_usage_peak": 45,
+  "ram_usage_avg": 67,
+  "ram_usage_max": 90,
+  "disk_usage_avg": 45,
+  "disk_usage_max": 70,
+  "disk_read_iops": 200,
+  "disk_write_iops": 90,
+  "response_time": 234,
+  "visitors_per_day": 5666,
+  "pageviews_per_day": 2232,
+  "traffic_growth_rate": 22,
+  "peak_hours_start": "21:11",
+  "peak_hours_end": "00:14",
+  "peak_hours": 1,
+  "plugin_count": 12,
+  "heavy_plugins": "woocommerce,elementor",
+  "php_version": "8.0",
+  "cache_enabled": "oui",
+  "cdn_enabled": "oui",
+  "wp_type": "medium"
+}

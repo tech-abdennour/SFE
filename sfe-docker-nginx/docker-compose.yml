@@ -46,8 +46,8 @@ services:
       - "8000:8000"
     volumes:
       - ./python:/app
-      - ./python/Donnes_Parameters:/app/Donnes_Parameters
-      - ./app/Donnee_parametres:/app/Donnee_parametres
+      # - ./python/Donnes_Parameters:/app/Donnes_Parameters  # supprimé, dossier obsolète
+      - ./python/Donnee_parametres:/app/Donnee_parametres
       - ./python/service/analysis_exports:/app/service/analysis_exports
 
 volumes:

@@ -31,12 +31,14 @@ warnings.filterwarnings('ignore')
 # ============================================================================
 BASE_DIR = Path(__file__).parent
 
+
+# Toujours utiliser le dossier unique Donnee_parametres
 if os.path.exists("/app"):
     MODELS_DIR = Path("/app/models")
     DATA_DIR = Path("/app/Donnee_parametres")
 else:
     MODELS_DIR = BASE_DIR.parent / "models"
-    DATA_DIR = BASE_DIR.parent.parent / "app" / "Donnee_parametres"
+    DATA_DIR = BASE_DIR.parent / "Donnee_parametres"
 
 MODEL_PATH = MODELS_DIR / "xgboost_models.pkl"
 OUTPUT_DIR = BASE_DIR / "analysis_exports"
@@ -482,6 +484,7 @@ def graph_arbre(features_dict, result, json_file):
 # MAIN
 # ============================================================================
 def main():
+
     model_load, feature_columns, scaler = load_model()
     if model_load is None:
         print(json.dumps({'success': False, 'error': 'Modèle introuvable'}))
@@ -515,19 +518,23 @@ def main():
     g3 = graph_correlation(features_dict)
     g4 = graph_arbre(features_dict, result, json_file)
     
-    output = {
-        'success': True,
-        'result': result,
-        'files': {
-            'importance': g1,
-            'dashboard': g2,
-            'correlation': g3,
-            'arbre': g4
-        },
-        'source': Path(json_file).name
+    images = []
+    base_url = "http://localhost:8000/static/"
+    if g1: images.append({"type": "feature_importance", "url": base_url + os.path.basename(g1)})
+    if g2: images.append({"type": "dashboard", "url": base_url + os.path.basename(g2)})
+    if g3: images.append({"type": "correlation", "url": base_url + os.path.basename(g3)})
+    if g4: images.append({"type": "tree", "url": base_url + os.path.basename(g4)})
+
+    response = {
+        "status": "success",
+        "output": {
+            "result": result,
+            "images": images,
+            "trees": [],
+            "source": Path(json_file).name
+        }
     }
-    
-    print(json.dumps(output, ensure_ascii=False))
+    print(json.dumps(response, ensure_ascii=False))
 
 
 if __name__ == "__main__":

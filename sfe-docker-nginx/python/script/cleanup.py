@@ -65,16 +65,23 @@ def cleanup_images():
         log(f"   ⚠️  Dossier introuvable : {EXPORTS_DIR}")
         return
 
-    # Supprimer toutes les images PNG dans analysis_exports (vider complètement le dossier)
+    # Supprimer toutes les images PNG sauf les protégées
+    protected_files = {"saturation_distribution.png", "xgboost_tree_0.png", "xgboost_tree_final.png"}
     all_images = glob.glob(os.path.join(EXPORTS_DIR, "*.png"))
     if not all_images:
         log(f"   ✅ 0 image → rien à supprimer")
         return
 
+    deleted = 0
     for f in all_images:
+        fname = os.path.basename(f)
+        if fname in protected_files:
+            log(f"      🛡️ {fname} (protégé)")
+            continue
         os.remove(f)
-        log(f"      ❌ {os.path.basename(f)} (supprimé)")
-    log(f"   ✅ Dossier analysis_exports vidé de toutes les images PNG.")
+        log(f"      ❌ {fname} (supprimé)")
+        deleted += 1
+    log(f"   ✅ {deleted} image(s) supprimée(s), protégées conservées.")
 
 def main():
     log("🚀 Début du nettoyage automatique")
