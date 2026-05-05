@@ -58,40 +58,23 @@ def cleanup_json_files():
 
 def cleanup_images():
     """
-    Vérifie CHAQUE type d'image.
-    Si TOUS les types ont > 1 fichier → supprime les anciens
+    Garde les 4 dernières images (tous types confondus), supprime les autres.
     """
     log(f"🖼️  analysis_exports/ → {EXPORTS_DIR}")
-    
     if not os.path.exists(EXPORTS_DIR):
         log(f"   ⚠️  Dossier introuvable : {EXPORTS_DIR}")
         return
-    
-    counts = {}
-    for img_type in IMAGE_TYPES:
-        files = glob.glob(os.path.join(EXPORTS_DIR, f"{img_type}*.png"))
-        counts[img_type] = len(files)
-        log(f"   📊 {img_type}* = {len(files)} fichier(s)")
-    
-    all_above_threshold = all(count > 1 for count in counts.values())
-    
-    if not all_above_threshold:
-        log(f"   ⏸️  Tous les types n'ont pas > 1 fichier → aucune suppression")
+
+    # Supprimer toutes les images PNG dans analysis_exports (vider complètement le dossier)
+    all_images = glob.glob(os.path.join(EXPORTS_DIR, "*.png"))
+    if not all_images:
+        log(f"   ✅ 0 image → rien à supprimer")
         return
-    
-    log(f"   🗑️  Tous les types > 1 → nettoyage...")
-    
-    for img_type in IMAGE_TYPES:
-        files = glob.glob(os.path.join(EXPORTS_DIR, f"{img_type}*.png"))
-        files.sort(key=os.path.getmtime, reverse=True)
-        
-        latest = files[0]
-        to_delete = files[1:]
-        
-        for f in to_delete:
-            os.remove(f)
-        
-        log(f"      {img_type}* → gardé {os.path.basename(latest)}, supprimé {len(to_delete)}")
+
+    for f in all_images:
+        os.remove(f)
+        log(f"      ❌ {os.path.basename(f)} (supprimé)")
+    log(f"   ✅ Dossier analysis_exports vidé de toutes les images PNG.")
 
 def main():
     log("🚀 Début du nettoyage automatique")
