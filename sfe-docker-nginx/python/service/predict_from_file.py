@@ -140,8 +140,9 @@ def prepare_features(params, feature_columns):
     php_version = params.get('php_version', '8.1')
     cache_enabled = 1 if str(params.get('cache_enabled', 'non')).lower() == 'oui' else 0
     cdn_enabled = 1 if str(params.get('cdn_enabled', 'non')).lower() == 'oui' else 0
-    wp_type_map = {'small': 0, 'medium': 1, 'performance': 2, 'enterprise': 3}
-    wp_type = wp_type_map.get(params.get('wp_type', 'medium'), 1)
+    wp_capacity = {'small': 0.7, 'medium': 1.0, 'performance': 1.7}
+    wp_type = params.get('wp_type', 'medium')
+    wp_factor = wp_capacity.get(wp_type, 1.0)
     php_scores = {'7.4': 0.85, '8.0': 0.90, '8.1': 0.95, '8.2': 1.00, '8.3': 1.05}
     php_score = php_scores.get(str(php_version), 0.95)
     start = params.get('peak_hours_start', '09:00')
@@ -160,8 +161,10 @@ def prepare_features(params, feature_columns):
         'traffic_growth_rate': growth_rate, 'peak_hours_duration': peak_hours,
         'plugin_count': plugin_count, 'heavy_plugins_count': heavy_count,
         'php_score': php_score, 'cache_enabled': cache_enabled,
-        'cdn_enabled': cdn_enabled, 'wp_factor': wp_type
+        'cdn_enabled': cdn_enabled, 'wp_factor': wp_factor
     }
+
+    print(f"[DEBUG] wp_type: {wp_type} | wp_factor utilisé: {wp_factor}", file=sys.stderr)
 
     df = pd.DataFrame([features_dict])
     if feature_columns:
@@ -177,10 +180,12 @@ def prepare_features(params, feature_columns):
 # ============================================================================
 def predict(model_load, scaler, features_dict, feature_columns):
     # Prédiction de la charge
+    # features_dict doit être le dictionnaire params venant du JSON !
     X, _ = prepare_features(features_dict, feature_columns)
+    print("[DEBUG] feature_columns utilisés pour la prédiction :", feature_columns, file=sys.stderr)
+    print("[DEBUG] DataFrame envoyé au modèle :\n", X, file=sys.stderr)
     if scaler is not None:
         X = scaler.transform(X)
-    
     if hasattr(model_load, 'predict'):
         predicted_load = float(model_load.predict(X)[0])
     else:
@@ -503,7 +508,8 @@ def main():
         return
     
     params = load_params(json_file)
-    _, features_dict = prepare_features(params, feature_columns)
+    print(f"[DEBUG] params lus depuis le JSON : {params}", file=sys.stderr)
+    features_dict = params  # On passe params directement à predict pour garantir la bonne valeur de wp_type
     result = predict(model_load, scaler, features_dict, feature_columns)
     
     # Afficher la saturation

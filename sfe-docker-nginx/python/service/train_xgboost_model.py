@@ -58,31 +58,16 @@ def generate_training_data(n_samples=10000):
     data = []
     
     for _ in range(n_samples):
-        # CPU
-        cpu_avg = np.random.uniform(10, 95)
-        cpu_peak = min(100, cpu_avg + np.random.uniform(5, 30))
-        
-        # RAM
-        ram_avg = np.random.uniform(15, 90)
-        ram_max = min(100, ram_avg + np.random.uniform(5, 25))
-        
-        # DISQUE
-        disk_avg = np.random.uniform(10, 90)
-        disk_max = min(100, disk_avg + np.random.uniform(5, 30))
-        
-        # IOPS DISQUE (Read/Write)
-        disk_read_iops = np.random.uniform(50, 2000)
-        disk_write_iops = np.random.uniform(30, 1500)
-        total_iops = disk_read_iops + disk_write_iops
+        # ... la génération des ressources dépend du pack choisi, après la définition de wp_type ...
         
         # Temps de réponse
         response_time = np.random.uniform(50, 3000)
         
-        # Trafic
-        visitors = np.random.uniform(100, 100000)
-        pageviews = visitors * np.random.uniform(1.5, 5)
-        growth_rate = np.random.uniform(-10, 80)
-        peak_hours_duration = np.random.randint(1, 8)
+        # Trafic (plus grande variabilité)
+        visitors = np.random.uniform(10, 500000)
+        pageviews = visitors * np.random.uniform(1.0, 10.0)
+        growth_rate = np.random.uniform(-50, 150)
+        peak_hours_duration = np.random.randint(1, 13)
         
         # WordPress
         plugin_count = np.random.randint(5, 60)
@@ -95,9 +80,22 @@ def generate_training_data(n_samples=10000):
         cache_enabled = np.random.choice([0, 1], p=[0.3, 0.7])
         cdn_enabled = np.random.choice([0, 1], p=[0.4, 0.6])
         
-        wp_capacity = {'small': 0.7, 'medium': 1.0, 'performance': 1.5, 'enterprise': 2.0}
-        wp_type = np.random.choice(list(wp_capacity.keys()), p=[0.3, 0.35, 0.25, 0.1])
+        # Réduire l'écart entre les packs pour que le modèle soit plus sensible aux autres paramètres
+        wp_capacity = {'small': 0.9, 'medium': 1.0, 'performance': 1.1}
+        wp_type = np.random.choice(list(wp_capacity.keys()), p=[0.4, 0.4, 0.2])
         wp_factor = wp_capacity[wp_type]
+
+        # Dépendance des ressources au pack choisi
+        # Augmenter la variabilité des autres paramètres pour que le modèle soit plus sensible à tout
+        cpu_avg = np.random.uniform(10, 100)
+        cpu_peak = min(100, cpu_avg + np.random.uniform(5, 50))
+        ram_avg = np.random.uniform(8, 128)
+        ram_max = min(128, ram_avg + np.random.uniform(2, 64))
+        disk_avg = np.random.uniform(5, 500)
+        disk_max = min(500, disk_avg + np.random.uniform(2, 200))
+        disk_read_iops = np.random.uniform(50, 2500)
+        disk_write_iops = np.random.uniform(30, 2000)
+        total_iops = disk_read_iops + disk_write_iops
 
         # Calcul de la charge prédite (avec TOUS les paramètres)
         predicted_load = (
@@ -134,7 +132,12 @@ def generate_training_data(n_samples=10000):
             # Conversion en jours (1 mois = 30.44 jours en moyenne)
             saturation_days = saturation_months * 30.44
         else:
-            saturation_days = 0 if predicted_load >= 90 else 999 * 30.44  # ~30 ans = infini
+            if predicted_load >= 90:
+                saturation_days = 0
+                saturation_months = 0
+            else:
+                saturation_days = 999 * 30.44  # ~30 ans = infini
+                saturation_months = 999
         
         # Statut basé sur les jours
         if predicted_load >= 85 or saturation_days <= 30:  # Moins de 30 jours = CRITIQUE
@@ -241,6 +244,13 @@ params = {'n_estimators': 300, 'max_depth': 8, 'learning_rate': 0.05, 'subsample
 print("\n🎯 Entraînement...")
 model_load = xgb.XGBRegressor(**params)
 model_load.fit(X_train, y_load_train, verbose=False)
+
+# Affichage de l'importance des features pour le modèle de charge
+importances = model_load.feature_importances_
+feature_names = X_train.columns if hasattr(X_train, 'columns') else [f'feat_{i}' for i in range(len(importances))]
+print("\n🔎 Importance des features (model_load):")
+for name, imp in sorted(zip(feature_names, importances), key=lambda x: -x[1]):
+    print(f"   {name:20s}: {imp:.4f}")
 
 model_score = xgb.XGBRegressor(**params)
 model_score.fit(X_train, y_score_train, verbose=False)
