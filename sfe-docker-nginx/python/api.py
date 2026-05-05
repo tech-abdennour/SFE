@@ -1,32 +1,52 @@
-import sys
 
-from fastapi import FastAPI, HTTPException
+import sys
+import os
+import json
+import glob
+import subprocess
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from script.cleanup import cleanup_json_files, cleanup_images
-import subprocess
-import os
-import json
-import glob
-# Ajouter le dossier script au path pour importer cleanup
+from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'script'))
 
 
-app = FastAPI()
+
 
 # =========================
 # DOWNLOAD LATEST JSON PARAMETER FILE
 # =========================
-PARAMS_DIR = "/app/Donnes_parameters"
+app = FastAPI()
+PARAMS_DIR = "/app/Donnee_parametres"
+# =========================
+# ENDPOINT POUR SAUVEGARDER LES PARAMÈTRES EN JSON
+# =========================
+@app.post("/save-parameters")
+async def save_parameters(request: Request):
+    try:
+        params = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erreur de parsing JSON: {e}")
+    if not os.path.exists(PARAMS_DIR):
+        os.makedirs(PARAMS_DIR, exist_ok=True)
+    filename = f"parameters_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
+    file_path = os.path.join(PARAMS_DIR, filename)
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(params, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la sauvegarde: {e}")
+    return {"status": "success", "filename": filename}
 
 @app.get("/download/last-parameters-json")
 def download_last_parameters_json():
     if not os.path.exists(PARAMS_DIR):
-        raise HTTPException(status_code=404, detail="Dossier Donnes_parameters introuvable")
+        raise HTTPException(status_code=404, detail="Dossier Donnee_parametres introuvable")
     json_files = [f for f in os.listdir(PARAMS_DIR) if f.endswith('.json')]
     if not json_files:
-        raise HTTPException(status_code=404, detail="Aucun fichier JSON trouvé dans Donnes_parameters")
+        raise HTTPException(status_code=404, detail="Aucun fichier JSON trouvé dans Donnee_parametres")
     json_files.sort(reverse=True)
     file_path = os.path.join(PARAMS_DIR, json_files[0])
     return FileResponse(
@@ -35,22 +55,7 @@ def download_last_parameters_json():
         filename=os.path.basename(file_path),
         headers={"Content-Disposition": f"attachment; filename={os.path.basename(file_path)}"}
     )
-import sys
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from script.cleanup import cleanup_json_files, cleanup_images
-import subprocess
-import os
-import json
-import glob
-# Ajouter le dossier script au path pour importer cleanup
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'script'))
-
-
-app = FastAPI()
 
 # =========================
 # CORS
@@ -200,20 +205,20 @@ def predict_from_file():
                 "stderr": result.stderr
             }
 
-        # Récupérer les résultats
-        prediction_result = output_json.get("result", {})
-        
-        # Récupérer les images
-        latest_images = get_latest_images()
-        tree_images = get_tree_images()
+        # Extraire correctement le résultat et les images du sous-dictionnaire 'output'
+        output = output_json.get("output", {})
+        prediction_result = output.get("result", {})
+        images = output.get("images", [])
+        trees = output.get("trees", [])
+        source = output.get("source", "")
 
         return {
             "status": "success",
             "output": {
                 "result": prediction_result,
-                "images": latest_images,
-                "trees": tree_images,
-                "source": output_json.get("source", "")
+                "images": images,
+                "trees": trees,
+                "source": source
             }
         }
 
